@@ -1,0 +1,108 @@
+.shell {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 2rem;
+  text-align: center;
+  animation: dissolveIn 800ms ease;
+}
+
+.kicker {
+  margin: 0 0 1rem;
+  color: var(--text-muted);
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+  font-size: 0.82rem;
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(4.25rem, 12vw, 8.5rem);
+  line-height: 0.9;
+  text-transform: lowercase;
+}
+
+.letter {
+  display: inline-block;
+  opacity: 0;
+  animation: letterReveal 780ms cubic-bezier(0.2, 0.85, 0.2, 1) forwards;
+}
+
+.description {
+  max-width: 42rem;
+  margin: 1.2rem auto 2rem;
+  color: var(--text-muted);
+  font-size: 1rem;
+  line-height: 1.8;
+}
+
+.actions {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.actionButton {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(0, 229, 204, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.045);
+  padding: 1rem 1.8rem;
+  min-width: 11rem;
+  cursor: pointer;
+  transition: transform 180ms ease, border-color 180ms ease;
+}
+
+.actionButton:hover {
+  transform: translateY(-2px) scale(1.01);
+  border-color: rgba(0, 229, 204, 0.42);
+}
+
+.actionButton:hover .ripple {
+  opacity: 1;
+  transform: scale(1.25);
+}
+
+.ripple {
+  position: absolute;
+  inset: 18%;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(0, 229, 204, 0.3), transparent 70%);
+  opacity: 0;
+  transform: scale(0.7);
+  transition: opacity 220ms ease, transform 260ms ease;
+}
+
+.label {
+  position: relative;
+  z-index: 1;
+}
+
+@keyframes letterReveal {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes dissolveIn {
+  from {
+    opacity: 0;
+    filter: blur(12px);
+  }
+
+  to {
+    opacity: 1;
+    filter: blur(0);
+  }
+}

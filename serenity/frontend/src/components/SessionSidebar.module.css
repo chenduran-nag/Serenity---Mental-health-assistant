@@ -1,0 +1,95 @@
+.sidebar {
+  position: relative;
+  z-index: 1;
+  transition: width 220ms ease, transform 220ms ease;
+}
+
+.open {
+  width: 19rem;
+}
+
+.closed {
+  width: 4.5rem;
+}
+
+.toggle {
+  position: absolute;
+  top: 1.5rem;
+  right: -1rem;
+  z-index: 2;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  background: rgba(5, 10, 14, 0.95);
+  padding: 0.55rem 0.8rem;
+  cursor: pointer;
+}
+
+.content {
+  height: 100%;
+  padding: 2rem 1rem 1rem;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
+  backdrop-filter: blur(20px);
+  border-right: 1px solid rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+}
+
+.heading {
+  margin: 0 0 1rem;
+  font-family: var(--font-display);
+  font-size: 2rem;
+}
+
+.newSessionButton {
+  width: 100%;
+  border: 1px solid rgba(0, 229, 204, 0.2);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 0.9rem 1rem;
+  cursor: pointer;
+}
+
+.sessionList {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.sessionCard {
+  display: grid;
+  gap: 0.35rem;
+  width: 100%;
+  padding: 0.95rem;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.03);
+  text-align: left;
+  cursor: pointer;
+}
+
+.sessionCard strong {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sessionCard span {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.active {
+  box-shadow: 0 0 0 1px rgba(0, 229, 204, 0.34);
+}
+
+@media (max-width: 960px) {
+  .sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    max-width: min(19rem, 86vw);
+  }
+
+  .closed {
+    transform: translateX(calc(-100% + 4.2rem));
+  }
+}

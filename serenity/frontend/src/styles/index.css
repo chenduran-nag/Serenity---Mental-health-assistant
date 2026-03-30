@@ -1,0 +1,60 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=DM+Sans:wght@400;500;700&display=swap');
+
+:root {
+  --void: #050a0e;
+  --deep: #0a1628;
+  --glow-teal: #00e5cc;
+  --glow-indigo: #6e44ff;
+  --glow-magenta: #ff2d9b;
+  --text-primary: #e8f4f8;
+  --text-muted: #7a9ab0;
+  --bubble-user: rgba(110, 68, 255, 0.18);
+  --bubble-ai: rgba(0, 229, 204, 0.1);
+  --glass: rgba(255, 255, 255, 0.04);
+  --font-display: 'Cormorant Garamond', serif;
+  --font-body: 'DM Sans', sans-serif;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  font-family: var(--font-body);
+  color: var(--text-primary);
+  background: var(--void);
+}
+
+button,
+textarea {
+  font: inherit;
+}
+
+button {
+  color: inherit;
+}
+
+a {
+  color: inherit;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: linear-gradient(var(--glow-indigo), var(--glow-teal));
+}

@@ -1,0 +1,89 @@
+services:
+  model-server:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: uvicorn backend.model_server:app --host 0.0.0.0 --port 8001
+    environment:
+      PYTHONPATH: /app/serenity
+      SERENITY_MODEL_DIR: /app/serenity/models/mental_health_llm
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-none}
+      NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}
+    ports:
+      - "${SERENITY_MODEL_PORT:-8001}:8001"
+    volumes:
+      - ./:/app/serenity
+
+  stt-server:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: uvicorn backend.stt_server:app --host 0.0.0.0 --port 8002
+    environment:
+      PYTHONPATH: /app/serenity
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-none}
+      NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}
+    ports:
+      - "${SERENITY_STT_PORT:-8002}:8002"
+    volumes:
+      - ./:/app/serenity
+
+  tts-server:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: uvicorn backend.tts_server:app --host 0.0.0.0 --port 8003
+    environment:
+      PYTHONPATH: /app/serenity
+    ports:
+      - "${SERENITY_TTS_PORT:-8003}:8003"
+    volumes:
+      - ./:/app/serenity
+
+  vad-server:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: uvicorn backend.vad_server:app --host 0.0.0.0 --port 8004
+    environment:
+      PYTHONPATH: /app/serenity
+    ports:
+      - "${SERENITY_VAD_PORT:-8004}:8004"
+    volumes:
+      - ./:/app/serenity
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000
+    depends_on:
+      - model-server
+      - stt-server
+      - tts-server
+      - vad-server
+    environment:
+      PYTHONPATH: /app/serenity
+      SERENITY_MODEL_SERVER_URL: http://model-server:8001
+      SERENITY_STT_SERVER_URL: http://stt-server:8002
+      SERENITY_TTS_SERVER_URL: http://tts-server:8003
+      SERENITY_DATABASE_URL: sqlite:////app/serenity/serenity.db
+    ports:
+      - "${SERENITY_BACKEND_PORT:-8000}:8000"
+    volumes:
+      - ./:/app/serenity
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    command: npm run dev -- --host 0.0.0.0 --port 5173
+    depends_on:
+      - backend
+    environment:
+      VITE_BACKEND_URL: ${VITE_BACKEND_URL:-http://localhost:8000}
+    ports:
+      - "${SERENITY_FRONTEND_PORT:-5173}:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules

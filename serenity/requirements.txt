@@ -1,0 +1,17 @@
+fastapi
+uvicorn[standard]
+transformers
+peft
+bitsandbytes
+datasets
+torch
+openai-whisper
+TTS
+webrtcvad
+sqlalchemy
+slowapi
+python-multipart
+httpx
+tqdm
+accelerate
+safetensors
