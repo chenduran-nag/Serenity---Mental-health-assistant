@@ -1,0 +1,47 @@
+# Node
+node_modules/
+dist/
+.vite/
+npm-debug.log*
+yarn-error.log*
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyc.*
+*.egg-info/
+.eggs/
+build/
+.venv/
+venv/
+env/
+
+# Serenity runtime artifacts
+serenity/serenity.db
+*.db
+*.sqlite
+*.sqlite3
+
+# Data + model artifacts (regenerate with scripts/download_data.py and scripts/finetune.py)
+serenity/data/cache/
+serenity/data/processed/
+serenity/models/mental_health_llm/*
+!serenity/models/mental_health_llm/model_card.md
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Tooling
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

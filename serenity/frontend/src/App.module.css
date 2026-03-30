@@ -1,0 +1,108 @@
+.appShell {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top left, rgba(0, 229, 204, 0.14), transparent 30%),
+    radial-gradient(circle at top right, rgba(255, 45, 155, 0.1), transparent 28%),
+    linear-gradient(145deg, var(--void), var(--deep));
+}
+
+.noiseLayer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.08;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 96px 96px;
+}
+
+.pageGlow {
+  position: fixed;
+  inset: 10% 18%;
+  pointer-events: none;
+  filter: blur(120px);
+  background:
+    radial-gradient(circle, rgba(0, 229, 204, 0.1), transparent 48%),
+    radial-gradient(circle at 70% 40%, rgba(110, 68, 255, 0.12), transparent 45%);
+}
+
+.layout {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  min-height: 100vh;
+}
+
+.stage {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 2rem clamp(1.2rem, 3vw, 2.75rem);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.eyebrow {
+  margin: 0 0 0.2rem;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(2.4rem, 4vw, 4.25rem);
+  line-height: 0.9;
+}
+
+.modePill {
+  border: 1px solid rgba(0, 229, 204, 0.2);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+  padding: 0.9rem 1.2rem;
+  cursor: pointer;
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.modePill:hover {
+  transform: translateY(-1px);
+  border-color: rgba(0, 229, 204, 0.42);
+  box-shadow: 0 0 28px rgba(0, 229, 204, 0.16);
+}
+
+.chatPanel {
+  min-height: 0;
+  flex: 1;
+}
+
+.interactionPanel {
+  display: grid;
+  min-height: 180px;
+}
+
+@media (max-width: 960px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .stage {
+    padding-top: 5rem;
+  }
+
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

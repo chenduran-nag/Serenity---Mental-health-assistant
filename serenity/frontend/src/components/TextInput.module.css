@@ -1,0 +1,53 @@
+.shell {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  gap: 1rem;
+  padding: 1rem 1.25rem 1.25rem;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.textarea {
+  width: 100%;
+  min-height: 3rem;
+  max-height: 10rem;
+  resize: none;
+  border: none;
+  border-bottom: 1px solid rgba(0, 229, 204, 0.18);
+  background: transparent;
+  color: var(--text-primary);
+  padding: 0.8rem 0;
+  outline: none;
+  line-height: 1.65;
+  transition: border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.textarea:focus {
+  border-bottom-color: rgba(0, 229, 204, 0.75);
+  box-shadow: 0 18px 30px -22px rgba(0, 229, 204, 0.55);
+}
+
+.sendButton {
+  width: 3.4rem;
+  height: 3.4rem;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 229, 204, 0.35);
+  background: radial-gradient(circle at 30% 30%, rgba(140, 249, 255, 0.8), rgba(0, 229, 204, 0.15));
+  color: var(--void);
+  font-size: 1.4rem;
+  cursor: pointer;
+  box-shadow: 0 0 24px rgba(0, 229, 204, 0.26);
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+
+.sendButton:hover:not(:disabled) {
+  transform: translateY(-1px) scale(1.02);
+  box-shadow: 0 0 30px rgba(0, 229, 204, 0.4);
+}
+
+.sendButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
