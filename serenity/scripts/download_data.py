@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
+from dataclasses import asdict
 from pathlib import Path
 import sys
 
@@ -70,12 +72,18 @@ def main() -> int:
     config.empathetic_dialogues.local_path = args.empathetic_dialogues_local
     config.psyqa.local_path = args.psyqa_local
 
-    examples = build_training_corpus(config)
-    write_jsonl(examples, args.output)
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
-    summary = dataset_summary(examples)
+    result = build_training_corpus(config)
+    write_jsonl(result.examples, args.output)
+
+    summary = dataset_summary(result.examples)
+    summary["sources"] = [asdict(outcome) for outcome in result.outcomes]
     args.summary_path.parent.mkdir(parents=True, exist_ok=True)
     args.summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+
+    for outcome in result.skipped:
+        print(f"WARNING: skipped {outcome.name}: {outcome.error}", file=sys.stderr)
 
     print(json.dumps({"output": str(args.output), **summary}, indent=2))
     return 0

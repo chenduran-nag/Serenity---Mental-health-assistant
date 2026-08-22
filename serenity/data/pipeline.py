@@ -5,12 +5,15 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 import hashlib
 import json
+import logging
 import re
 from pathlib import Path
 from typing import Any, Iterable, Iterator, Mapping, Sequence
 
 from datasets import Dataset, DatasetDict, IterableDataset, load_dataset
 
+
+logger = logging.getLogger(__name__)
 
 PROMPT_FIELDS: tuple[str, ...] = (
     "prompt",
@@ -95,6 +98,30 @@ class DataPrepConfig:
 
 
 @dataclass(slots=True)
+class SourceOutcome:
+    """Whether one configured dataset source contributed to the corpus."""
+
+    name: str
+    ok: bool
+    example_count: int
+    error: str | None = None
+
+
+@dataclass(slots=True)
+class CorpusBuildResult:
+    """The merged corpus plus a per-source record of what happened."""
+
+    examples: list["PreparedExample"]
+    outcomes: list[SourceOutcome]
+
+    @property
+    def skipped(self) -> list[SourceOutcome]:
+        """Return the sources that could not be loaded."""
+
+        return [outcome for outcome in self.outcomes if not outcome.ok]
+
+
+@dataclass(slots=True)
 class PreparedExample:
     """Normalized training record."""
 
@@ -112,16 +139,50 @@ class PreparedExample:
         }
 
 
-def build_training_corpus(config: DataPrepConfig) -> list[PreparedExample]:
-    """Load all configured datasets and return deduplicated examples."""
+def build_training_corpus(config: DataPrepConfig) -> CorpusBuildResult:
+    """Load every configured dataset and return the deduplicated corpus.
+
+    Sources are independent: PsyQA is gated and unavailable to most users, so one
+    source failing to load is recorded and skipped rather than aborting the run.
+    Only a total failure - no source loaded at all - raises.
+    """
+
+    extractors = (
+        (config.counsel_chat, _extract_counsel_chat),
+        (config.empathetic_dialogues, _extract_empathetic_dialogues),
+        (config.psyqa, _extract_psyqa),
+    )
 
     all_examples: list[PreparedExample] = []
-    all_examples.extend(_extract_counsel_chat(load_source(config.counsel_chat, config.cache_dir)))
-    all_examples.extend(
-        _extract_empathetic_dialogues(load_source(config.empathetic_dialogues, config.cache_dir))
-    )
-    all_examples.extend(_extract_psyqa(load_source(config.psyqa, config.cache_dir)))
-    return deduplicate_examples(clean_examples(all_examples))
+    outcomes: list[SourceOutcome] = []
+
+    for source, extract in extractors:
+        try:
+            extracted = extract(load_source(source, config.cache_dir))
+        except Exception as exc:
+            logger.warning("Skipping dataset %r: %s", source.name, exc)
+            outcomes.append(
+                SourceOutcome(
+                    name=source.name,
+                    ok=False,
+                    example_count=0,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+            )
+            continue
+
+        all_examples.extend(extracted)
+        outcomes.append(SourceOutcome(name=source.name, ok=True, example_count=len(extracted)))
+
+    if not any(outcome.ok for outcome in outcomes):
+        details = "; ".join(f"{outcome.name}: {outcome.error}" for outcome in outcomes)
+        raise RuntimeError(f"No datasets could be loaded. {details}")
+
+    examples = deduplicate_examples(clean_examples(all_examples))
+    if not examples:
+        raise RuntimeError("Datasets loaded but produced no usable prompt-response pairs.")
+
+    return CorpusBuildResult(examples=examples, outcomes=outcomes)
 
 
 def load_source(source: DatasetSource, cache_dir: Path) -> list[Dataset]:
