@@ -130,12 +130,26 @@ Response:
 
 - Multipart field: `audio_file`
 - Optional multipart field: `session_id`
-- Returns `audio/wav`
-- Response headers include:
-  - `X-Transcript`
-  - `X-Reply-Text`
-  - `X-Session-Id`
-  - `X-Crisis-Detected`
+- Returns `application/json`
+
+```json
+{
+  "reply": "empathetic reply",
+  "transcript": "what the user said",
+  "session_id": "uuid",
+  "timestamp": "2026-03-29T00:00:00+00:00",
+  "crisis_detected": false,
+  "crisis_message": null,
+  "audio_base64": "UklGRiQAAABXQVZF...",
+  "audio_media_type": "audio/wav"
+}
+```
+
+Audio is base64-encoded inside the JSON body rather than returned as a raw
+`audio/wav` response with metadata in `X-` headers. HTTP header values cannot
+contain newlines and must be latin-1 encodable. Model replies routinely contain
+newlines — the crisis path always does — and transcripts can be in any script,
+so the header-based contract could not carry either one reliably.
 
 ### `GET /chat/history/{session_id}`
 
@@ -162,6 +176,21 @@ Serenity always runs the crisis detector before returning chat output. Messages 
 | CPU-only | 16 GB RAM | `distilgpt2` |
 | Mid GPU | 12 GB VRAM + 16 GB RAM | `TinyLlama/TinyLlama-1.1B-Chat-v1.0` |
 | High GPU | 24 GB VRAM + 32 GB RAM | `mistralai/Mistral-7B-Instruct-v0.2` with QLoRA |
+
+## Tests
+
+The unit and API tests stub the model, STT, and TTS services, so they need only
+the light dependencies — no torch, Whisper, or Coqui install required.
+
+```bash
+pip install -r requirements-dev.txt
+pytest tests/ -q
+```
+
+`tests/test_crisis_detector.py` covers the safety layer in isolation.
+`tests/test_main.py` covers the orchestration endpoints, including regression
+tests for the per-session rate limiter, for crisis resources surviving a model
+server outage, and for voice replies that contain newlines or non-latin-1 text.
 
 ## Integration Checks
 
