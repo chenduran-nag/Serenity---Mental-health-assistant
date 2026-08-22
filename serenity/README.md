@@ -94,6 +94,26 @@ build argument. `depends_on` controls start order only; it deliberately does not
 gate on health, since an untrained model server would otherwise block the whole
 stack from starting.
 
+#### Disk usage and CPU vs GPU wheels
+
+torch is installed in a dedicated layer by a command identical across every
+service, so the image store keeps **one** copy instead of one per service.
+
+That layer uses the **CPU wheel index by default**. The default compose config
+sets `NVIDIA_VISIBLE_DEVICES=none`, so the CUDA runtime bundled into the PyPI
+wheels would be roughly 3 GB of dead weight per image. Building all services with
+the default PyPI wheels needs well over 20 GB of Docker disk.
+
+To build GPU images, point at the matching CUDA index:
+
+```bash
+SERENITY_TORCH_INDEX_URL=https://download.pytorch.org/whl/cu121 docker compose build
+```
+
+If Docker runs out of space mid-build, the symptom is misleading: the VM's
+filesystem remounts read-only and pip reports
+`OSError: [Errno 30] Read-only file system` rather than a disk-space error.
+
 ### Non-Docker path
 
 1. Create a Python 3.11 environment.
