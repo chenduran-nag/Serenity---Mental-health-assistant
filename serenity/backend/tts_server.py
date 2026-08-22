@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import re
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any
@@ -18,8 +21,10 @@ DEFAULT_TTS_PORT = int(os.getenv("TTS_PORT", "8003"))
 DEFAULT_TTS_HOST = os.getenv("TTS_HOST", "0.0.0.0")
 TTS_MODEL_NAME = os.getenv("TTS_MODEL_NAME", "tts_models/en/ljspeech/glow-tts")
 
-app = FastAPI(title="Serenity TTS Server", version="1.0.0")
 _tts: Any | None = None
+_load_error: str | None = None
+
+logger = logging.getLogger(__name__)
 
 
 class SpeechRequest(BaseModel):
@@ -37,12 +42,20 @@ def _enhance_prosody(text: str) -> str:
     return re.sub(r"\s+", " ", normalized).strip()
 
 
-@app.on_event("startup")
-async def startup_event() -> None:
-    """Load the TTS model during startup."""
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    """Load the TTS voice once, reporting failures through /health."""
 
-    global _tts
-    _tts = TTS(model_name=TTS_MODEL_NAME, progress_bar=False, gpu=False)
+    global _tts, _load_error
+    try:
+        _tts = TTS(model_name=TTS_MODEL_NAME, progress_bar=False, gpu=False)
+    except Exception as exc:
+        _load_error = f"{type(exc).__name__}: {exc}"
+        logger.error("TTS model failed to load: %s", _load_error)
+    yield
+
+
+app = FastAPI(title="Serenity TTS Server", version="1.0.0", lifespan=lifespan)
 
 
 @app.post("/speak")
@@ -50,7 +63,7 @@ async def speak(payload: SpeechRequest) -> StreamingResponse:
     """Convert text into spoken audio and stream a WAV response."""
 
     if _tts is None:
-        raise HTTPException(status_code=503, detail="TTS model is not loaded.")
+        raise HTTPException(status_code=503, detail=_load_error or "TTS model is not loaded.")
 
     enhanced_text = _enhance_prosody(payload.text)
     temp_path: Path | None = None
@@ -79,6 +92,7 @@ async def health() -> dict[str, Any]:
     return {
         "ok": _tts is not None,
         "model_name": TTS_MODEL_NAME,
+        "error": _load_error,
     }
 
 
