@@ -7,7 +7,7 @@ This directory contains the dataset preparation layer for Serenity's local menta
 | Source | Availability |
 |---|---|
 | Counsel Chat | public (`nbertagnolli/counsel-chat`, falls back to `Amod/mental_health_counseling_conversations`) |
-| EmpatheticDialogues | public (`empathetic_dialogues`) |
+| EmpatheticDialogues | public, but **script-based** — loaded from the hub's auto-converted parquet revision (`facebook/empathetic_dialogues` @ `refs/convert/parquet`) |
 | PsyQA | **gated** — not publicly downloadable; both candidate IDs return HTTP 401 |
 
 Each source is loaded independently. One that fails is logged and skipped, and
@@ -16,6 +16,26 @@ The run fails only when *every* source fails, or when the merged corpus is empty
 
 In practice this means a default run builds from Counsel Chat and
 EmpatheticDialogues. Supply `--psyqa-local` if you have been granted PsyQA access.
+
+`datasets` 4.x removed dataset-script execution, and both hub copies of
+EmpatheticDialogues are script-based, so a plain `load_dataset` fails with
+`Dataset scripts are no longer supported`. `DatasetSource.revision` pins the
+auto-converted parquet revision, which carries the same `conv_id`,
+`speaker_idx`, and `utterance` columns the extractor expects.
+
+### Corpus shape
+
+A default run yields roughly 79k pairs, and the two sources differ sharply in
+register:
+
+| Source | Pairs | Style |
+|---|---|---|
+| EmpatheticDialogues | ~76.5k | short conversational turns (median response ~58 chars) |
+| Counsel Chat | ~2.6k | long-form counsellor answers (responses often 1000+ chars) |
+
+87% of responses are under 120 characters, so a model fine-tuned on this mix
+learns short empathetic chat rather than counselling-style depth. If longer
+replies are wanted, oversample Counsel Chat or filter EmpatheticDialogues.
 
 ## Output Contract
 
