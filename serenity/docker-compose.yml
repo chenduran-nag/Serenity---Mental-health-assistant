@@ -90,6 +90,28 @@ services:
     volumes:
       - ./:/app/serenity
 
+  # Data prep and fine-tuning. Held behind a profile so it never starts with the
+  # stack; run it explicitly:
+  #   docker compose --profile training run --rm trainer python scripts/download_data.py
+  #   docker compose --profile training run --rm trainer python scripts/finetune.py
+  trainer:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      args:
+        REQUIREMENTS: requirements-data.txt
+        TORCH_INDEX_URL: ${SERENITY_TORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}
+    profiles:
+      - training
+    environment:
+      PYTHONPATH: /app/serenity
+      HF_HOME: /app/serenity/data/cache/huggingface
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-none}
+      NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}
+    volumes:
+      - ./:/app/serenity
+    command: ["python", "scripts/download_data.py"]
+
   frontend:
     build:
       context: ./frontend
