@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import ctypes
+import logging
 import os
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any
@@ -17,9 +20,11 @@ DEFAULT_STT_PORT = int(os.getenv("STT_PORT", "8002"))
 DEFAULT_STT_HOST = os.getenv("STT_HOST", "0.0.0.0")
 EXPLICIT_MODEL_NAME = os.getenv("WHISPER_MODEL_NAME")
 
-app = FastAPI(title="Serenity STT Server", version="1.0.0")
 _model: Any | None = None
 _model_name: str | None = None
+_load_error: str | None = None
+
+logger = logging.getLogger(__name__)
 
 
 class TranscriptionResponse(BaseModel):
@@ -73,12 +78,20 @@ def _load_model() -> Any:
     return whisper.load_model(_model_name)
 
 
-@app.on_event("startup")
-async def startup_event() -> None:
-    """Load the speech model during application startup."""
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    """Load the Whisper model once, reporting failures through /health."""
 
-    global _model
-    _model = _load_model()
+    global _model, _load_error
+    try:
+        _model = _load_model()
+    except Exception as exc:
+        _load_error = f"{type(exc).__name__}: {exc}"
+        logger.error("Whisper model failed to load: %s", _load_error)
+    yield
+
+
+app = FastAPI(title="Serenity STT Server", version="1.0.0", lifespan=lifespan)
 
 
 @app.post("/transcribe", response_model=TranscriptionResponse)
@@ -86,7 +99,7 @@ async def transcribe_audio(audio_file: UploadFile = File(...)) -> TranscriptionR
     """Transcribe an uploaded WAV or WebM file into text."""
 
     if _model is None:
-        raise HTTPException(status_code=503, detail="Whisper model is not loaded.")
+        raise HTTPException(status_code=503, detail=_load_error or "Whisper model is not loaded.")
 
     suffix = Path(audio_file.filename or "audio.wav").suffix or ".wav"
     try:
@@ -126,6 +139,7 @@ async def health() -> dict[str, Any]:
     return {
         "ok": _model is not None,
         "model_name": _model_name,
+        "error": _load_error,
     }
 
 

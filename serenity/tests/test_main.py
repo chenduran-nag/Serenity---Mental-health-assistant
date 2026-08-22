@@ -37,14 +37,14 @@ def session_id():
 
 
 def _stub_generate(monkeypatch, reply=MULTILINE_REPLY):
-    async def _fake(prompt):
+    async def _fake(message, history=None):
         return reply
 
     monkeypatch.setattr(main_module, "_generate_reply", _fake)
 
 
 def _stub_generate_failure(monkeypatch, status_code=503):
-    async def _fake(prompt):
+    async def _fake(message, history=None):
         raise HTTPException(status_code=status_code, detail="Model server is unavailable.")
 
     monkeypatch.setattr(main_module, "_generate_reply", _fake)
@@ -85,6 +85,37 @@ def test_chat_text_generates_session_id_when_absent(client, monkeypatch):
     response = client.post("/chat/text", json={"message": "Hello.", "history": []})
     assert response.status_code == 200
     assert uuid.UUID(response.json()["session_id"])
+
+
+def test_history_is_forwarded_to_the_model_server(client, monkeypatch, session_id):
+    """Prior turns must reach the model server as structured turns, not a flattened blob."""
+
+    captured = {}
+
+    async def _fake(message, history=None):
+        captured["message"] = message
+        captured["history"] = [(turn.role, turn.content) for turn in (history or [])]
+        return "I hear you."
+
+    monkeypatch.setattr(main_module, "_generate_reply", _fake)
+
+    response = client.post(
+        "/chat/text",
+        json={
+            "session_id": session_id,
+            "message": "And today was worse.",
+            "history": [
+                {"role": "user", "content": "I had a hard week."},
+                {"role": "assistant", "content": "That sounds heavy."},
+            ],
+        },
+    )
+    assert response.status_code == 200
+    assert captured["message"] == "And today was worse."
+    assert captured["history"] == [
+        ("user", "I had a hard week."),
+        ("assistant", "That sounds heavy."),
+    ]
 
 
 def test_model_failure_propagates_for_non_crisis(client, monkeypatch, session_id):

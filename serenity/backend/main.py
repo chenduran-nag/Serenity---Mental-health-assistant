@@ -6,6 +6,8 @@ import base64
 import logging
 import os
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any
 
@@ -39,8 +41,18 @@ API_PORT = int(os.getenv("SERENITY_BACKEND_PORT", "8000"))
 MODEL_SERVER_URL = _service_url("SERENITY_MODEL_SERVER_URL", "http://127.0.0.1:8001")
 STT_SERVER_URL = _service_url("SERENITY_STT_SERVER_URL", "http://127.0.0.1:8002")
 TTS_SERVER_URL = _service_url("SERENITY_TTS_SERVER_URL", "http://127.0.0.1:8003")
+VAD_SERVER_URL = _service_url("SERENITY_VAD_SERVER_URL", "http://127.0.0.1:8004")
 SERVICE_TIMEOUT_SECONDS = float(os.getenv("SERENITY_HTTP_TIMEOUT", "120"))
 RATE_LIMIT_PER_MINUTE = int(os.getenv("SERENITY_RATE_LIMIT_PER_MINUTE", "60"))
+
+# Conversations here are sensitive, so the browser origins allowed to call this
+# API are explicit. Override with a comma-separated SERENITY_CORS_ORIGINS list.
+DEFAULT_CORS_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
+CORS_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("SERENITY_CORS_ORIGINS", DEFAULT_CORS_ORIGINS).split(",")
+    if origin.strip()
+]
 
 logger = logging.getLogger(__name__)
 
@@ -50,15 +62,22 @@ logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=_session_rate_key, default_limits=[])
 RATE_LIMIT_ITEM = RateLimitItemPerMinute(RATE_LIMIT_PER_MINUTE)
 
-app = FastAPI(title="Serenity Backend", version="1.0.0")
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    """Initialize persistent services for the lifetime of the application."""
+
+    init_db()
+    yield
+
+
+app = FastAPI(title="Serenity Backend", version="1.0.0", lifespan=lifespan)
 app.state.limiter = limiter
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["*"],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "X-Session-Id"],
 )
 
 
@@ -111,18 +130,6 @@ def _ensure_session_id(session_id: str | None) -> str:
     return session_id or str(uuid.uuid4())
 
 
-def _format_history(messages: list[ChatMessage], latest_message: str) -> str:
-    """Format a simple chat transcript for the model server."""
-
-    lines: list[str] = []
-    for item in messages:
-        speaker = "User" if item.role.lower() == "user" else "Assistant"
-        lines.append(f"{speaker}: {item.content.strip()}")
-    lines.append(f"User: {latest_message.strip()}")
-    lines.append("Assistant:")
-    return "\n".join(lines)
-
-
 def _apply_rate_limit(request: Request, session_id: str) -> None:
     """Enforce the configured per-session rate limit."""
 
@@ -135,10 +142,15 @@ def _apply_rate_limit(request: Request, session_id: str) -> None:
         )
 
 
-async def _generate_reply(prompt: str) -> str:
+async def _generate_reply(message: str, history: list[ChatMessage] | None = None) -> str:
     """Call the model server to generate a response."""
 
-    payload: dict[str, Any] = {"prompt": prompt, "max_tokens": 256, "temperature": 0.7}
+    payload: dict[str, Any] = {
+        "prompt": message,
+        "history": [{"role": item.role, "content": item.content} for item in history or []],
+        "max_tokens": 256,
+        "temperature": 0.7,
+    }
     try:
         async with httpx.AsyncClient(timeout=SERVICE_TIMEOUT_SECONDS) as client:
             response = await client.post(f"{MODEL_SERVER_URL}/generate", json=payload)
@@ -210,10 +222,9 @@ async def _chat_text_impl(request: Request, payload: ChatTextRequest) -> ChatTex
     _apply_rate_limit(request, session_id)
 
     crisis = detect_crisis(payload.message)
-    prompt = _format_history(payload.history, payload.message)
 
     try:
-        reply = await _generate_reply(prompt)
+        reply = await _generate_reply(payload.message, payload.history)
     except HTTPException:
         # A crisis message must never be swallowed by an upstream failure. If the
         # model server is down we still return the hotline resources.
@@ -237,13 +248,6 @@ async def _chat_text_impl(request: Request, payload: ChatTextRequest) -> ChatTex
         crisis_detected=crisis.crisis_detected,
         crisis_message=crisis.resource_message,
     )
-
-
-@app.on_event("startup")
-async def startup_event() -> None:
-    """Initialize persistent services at app startup."""
-
-    init_db()
 
 
 @app.post("/chat/text", response_model=ChatTextResponse)
@@ -324,6 +328,7 @@ async def _gather_service_health() -> dict[str, dict[str, Any]]:
         "model": MODEL_SERVER_URL,
         "stt": STT_SERVER_URL,
         "tts": TTS_SERVER_URL,
+        "vad": VAD_SERVER_URL,
     }
     services: dict[str, dict[str, Any]] = {}
     for name, base_url in probes.items():
