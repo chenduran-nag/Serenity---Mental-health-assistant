@@ -7,11 +7,20 @@ async function unwrapJson(response) {
       const body = await response.json();
       detail = body.detail || detail;
     } catch {
-      detail = detail;
+      // response body was not JSON; keep the status-based detail
     }
     throw new Error(detail);
   }
   return response.json();
+}
+
+function base64ToBlob(base64, mediaType) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new Blob([bytes], { type: mediaType || 'audio/wav' });
 }
 
 export async function sendTextChat({ sessionId, message, history }) {
@@ -43,17 +52,15 @@ export async function sendVoiceChat({ audioBlob, sessionId }) {
     body: formData,
   });
 
-  if (!response.ok) {
-    throw new Error(`Voice request failed with status ${response.status}.`);
-  }
+  const data = await unwrapJson(response);
 
   return {
-    audioBlob: await response.blob(),
-    transcript: response.headers.get('X-Transcript') || '',
-    reply: response.headers.get('X-Reply-Text') || '',
-    sessionId: response.headers.get('X-Session-Id') || sessionId,
-    crisisDetected: response.headers.get('X-Crisis-Detected') === 'true',
-    timestamp: new Date().toISOString(),
+    audioBlob: base64ToBlob(data.audio_base64, data.audio_media_type),
+    transcript: data.transcript || '',
+    reply: data.reply || '',
+    sessionId: data.session_id || sessionId,
+    crisisDetected: Boolean(data.crisis_detected),
+    timestamp: data.timestamp || new Date().toISOString(),
   };
 }
 
