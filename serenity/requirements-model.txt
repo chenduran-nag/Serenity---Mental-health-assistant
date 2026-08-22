@@ -1,0 +1,12 @@
+# backend/model_server.py - inference on the fine-tuned model.
+-r requirements.txt
+
+torch>=2.1,<3
+# transformers 5.x renamed from_pretrained's torch_dtype argument, which this
+# code still uses; it is also newer than anything Coqui TTS was tested against.
+transformers>=4.40,<5
+peft>=0.10,<1
+accelerate>=0.30,<2
+safetensors>=0.4,<1
+# bitsandbytes ships Linux wheels; it is only needed for the 4-bit QLoRA path.
+bitsandbytes>=0.43,<1; platform_system == "Linux"

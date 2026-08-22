@@ -3,6 +3,8 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+      args:
+        REQUIREMENTS: requirements-model.txt
     command: uvicorn backend.model_server:app --host 0.0.0.0 --port 8001
     environment:
       PYTHONPATH: /app/serenity
@@ -18,6 +20,8 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+      args:
+        REQUIREMENTS: requirements-stt.txt
     command: uvicorn backend.stt_server:app --host 0.0.0.0 --port 8002
     environment:
       PYTHONPATH: /app/serenity
@@ -32,6 +36,8 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+      args:
+        REQUIREMENTS: requirements-tts.txt
     command: uvicorn backend.tts_server:app --host 0.0.0.0 --port 8003
     environment:
       PYTHONPATH: /app/serenity
@@ -44,6 +50,8 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+      args:
+        REQUIREMENTS: requirements-vad.txt
     command: uvicorn backend.vad_server:app --host 0.0.0.0 --port 8004
     environment:
       PYTHONPATH: /app/serenity
@@ -56,6 +64,8 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+      args:
+        REQUIREMENTS: requirements.txt
     command: uvicorn backend.main:app --host 0.0.0.0 --port 8000
     depends_on:
       - model-server
@@ -67,7 +77,9 @@ services:
       SERENITY_MODEL_SERVER_URL: http://model-server:8001
       SERENITY_STT_SERVER_URL: http://stt-server:8002
       SERENITY_TTS_SERVER_URL: http://tts-server:8003
+      SERENITY_VAD_SERVER_URL: http://vad-server:8004
       SERENITY_DATABASE_URL: sqlite:////app/serenity/serenity.db
+      SERENITY_CORS_ORIGINS: ${SERENITY_CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
     ports:
       - "${SERENITY_BACKEND_PORT:-8000}:8000"
     volumes:

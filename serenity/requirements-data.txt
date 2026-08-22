@@ -1,0 +1,5 @@
+# scripts/download_data.py and scripts/finetune.py - corpus prep and training.
+-r requirements-model.txt
+
+datasets>=2.19,<5
+tqdm>=4.66,<5

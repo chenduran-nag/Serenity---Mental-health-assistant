@@ -1,0 +1,6 @@
+# backend/vad_server.py - WebRTC voice activity detection.
+# webrtcvad is source-only and builds a C extension, so the image needs a
+# compiler (backend/Dockerfile installs build-essential).
+-r requirements.txt
+
+webrtcvad>=2.0.10,<3

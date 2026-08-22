@@ -10,8 +10,12 @@ RUN apt-get update \
 
 WORKDIR /app
 
-COPY requirements.txt /tmp/requirements.txt
-RUN pip install --upgrade pip && pip install -r /tmp/requirements.txt
+# Each service installs only its own stack, so the Whisper, Coqui, and training
+# pins never have to resolve against one another in a single environment.
+ARG REQUIREMENTS=requirements.txt
+
+COPY requirements*.txt /tmp/deps/
+RUN pip install --upgrade pip && pip install -r /tmp/deps/${REQUIREMENTS}
 
 COPY . /app/serenity
 WORKDIR /app/serenity
