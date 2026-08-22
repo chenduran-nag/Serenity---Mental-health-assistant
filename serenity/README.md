@@ -119,6 +119,22 @@ toolchain is needed outside Docker. The images install `build-essential` for thi
 
 - `scripts/download_data.py` merges Counsel Chat, EmpatheticDialogues, and PsyQA into `data/processed/mental_health_dataset.jsonl`
 - Cleaning includes whitespace normalization, PII redaction, and deduplication
+- Sources are independent. A source that cannot be loaded is logged, skipped, and
+  recorded in `dataset_summary.json` under `sources`; the run fails only if every
+  source fails, or if the merged corpus ends up empty.
+
+> **PsyQA is gated.** It is not publicly downloadable from the Hugging Face hub —
+> both candidate IDs return HTTP 401 — so by default the corpus is built from
+> Counsel Chat and EmpatheticDialogues alone. If you have been granted access,
+> point at your local copy:
+>
+> ```bash
+> python scripts/download_data.py --psyqa-local /path/to/psyqa
+> ```
+
+Note that the PII redaction substitutes visible placeholders such as
+`[redacted_phone]`. A model fine-tuned on this corpus can learn to emit those
+tokens verbatim; dropping affected examples instead is worth considering.
 
 ### Model selection logic
 
