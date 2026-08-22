@@ -112,6 +112,40 @@ services:
       - ./:/app/serenity
     command: ["python", "scripts/download_data.py"]
 
+  # GPU variant of the trainer. Kept as its own service because a device
+  # reservation makes a service unstartable on machines without an NVIDIA GPU,
+  # and because it needs CUDA torch wheels rather than the CPU default.
+  #
+  # cu121 (torch 2.5.x) is the default: it still ships sm_75 kernels, which
+  # Turing cards such as the RTX 2060 need, and newer drivers run it fine.
+  # Override SERENITY_CUDA_INDEX_URL for a newer toolkit on newer hardware.
+  #
+  #   docker compose --profile training-gpu run --rm trainer-gpu python scripts/finetune.py
+  trainer-gpu:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      args:
+        REQUIREMENTS: requirements-data.txt
+        TORCH_INDEX_URL: ${SERENITY_CUDA_INDEX_URL:-https://download.pytorch.org/whl/cu121}
+    profiles:
+      - training-gpu
+    environment:
+      PYTHONPATH: /app/serenity
+      HF_HOME: /app/serenity/data/cache/huggingface
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      - ./:/app/serenity
+    command: ["python", "scripts/finetune.py"]
+
   frontend:
     build:
       context: ./frontend

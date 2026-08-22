@@ -45,6 +45,8 @@ class ModelSelection:
     use_lora: bool
     target_modules: tuple[str, ...]
     device: str
+    max_per_device_batch: int
+    gradient_checkpointing: bool
 
 
 @dataclass(frozen=True)
@@ -59,6 +61,8 @@ class TrainingMetadata:
     batch_size: int
     lora_r: int
     lora_alpha: int
+    per_device_batch_size: int
+    gradient_accumulation_steps: int
     dataset_path: str
     model_output_dir: str
     crisis_resource_message: str
@@ -68,9 +72,15 @@ def detect_model_selection() -> ModelSelection:
     """Select an appropriate base model based on local hardware."""
 
     if torch.cuda.is_available():
-        device_props = torch.cuda.get_device_properties(0)
-        total_gb = device_props.total_memory / (1024**3)
-        if total_gb >= 24:
+        total_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+        # bitsandbytes NF4 needs compute capability 7.5 (Turing) or newer.
+        supports_4bit = torch.cuda.get_device_capability(0) >= (7, 5)
+
+        # Thresholds sit below nominal capacity on purpose. CUDA reports slightly
+        # less memory than a card is sold with - a 6 GB RTX 2060 reports 5.9997
+        # GiB, and a 24 GB RTX 3090 reports about 23.7 - so testing against the
+        # nominal figure never matches the cards it is meant to describe.
+        if supports_4bit and total_gb >= 22:
             return ModelSelection(
                 model_id="mistralai/Mistral-7B-Instruct-v0.2",
                 strategy="qlora",
@@ -78,15 +88,23 @@ def detect_model_selection() -> ModelSelection:
                 use_lora=True,
                 target_modules=("q_proj", "k_proj", "v_proj", "o_proj"),
                 device="cuda",
+                max_per_device_batch=4,
+                gradient_checkpointing=True,
             )
-        if total_gb >= 12:
+        if supports_4bit and total_gb >= 5.5:
+            # Fully fine-tuning even a 1.1B model needs roughly 18 GB once AdamW
+            # optimizer states are counted, so every GPU below 24 GB uses QLoRA.
+            # Cards in the 6-8 GB range additionally need a per-device batch of 1,
+            # with the effective batch made up by gradient accumulation.
             return ModelSelection(
                 model_id="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-                strategy="full_finetune",
-                load_in_4bit=False,
-                use_lora=False,
-                target_modules=(),
+                strategy="qlora",
+                load_in_4bit=True,
+                use_lora=True,
+                target_modules=("q_proj", "k_proj", "v_proj", "o_proj"),
                 device="cuda",
+                max_per_device_batch=4 if total_gb >= 11 else 1,
+                gradient_checkpointing=True,
             )
 
     return ModelSelection(
@@ -96,6 +114,8 @@ def detect_model_selection() -> ModelSelection:
         use_lora=False,
         target_modules=(),
         device="cpu",
+        max_per_device_batch=4,
+        gradient_checkpointing=False,
     )
 
 
@@ -151,14 +171,11 @@ def tokenize_dataset(dataset: Dataset, tokenizer: AutoTokenizer, max_length: int
 
     def _tokenize(example: dict[str, Any]) -> dict[str, Any]:
         text = build_example_text(example["prompt"], example["response"])
-        tokenized = tokenizer(
-            text,
-            truncation=True,
-            max_length=max_length,
-            padding="max_length",
-        )
-        tokenized["labels"] = tokenized["input_ids"].copy()
-        return tokenized
+        # No padding here: DataCollatorForLanguageModeling pads each batch to its
+        # own longest sequence and masks pad positions to -100. Padding every
+        # example to max_length instead would burn compute on padding for the 87%
+        # of this corpus that is far shorter, and would train on pad tokens.
+        return tokenizer(text, truncation=True, max_length=max_length)
 
     return dataset.map(_tokenize, remove_columns=dataset.column_names)
 
@@ -215,11 +232,13 @@ def run_training(args: argparse.Namespace) -> TrainingMetadata:
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    gradient_accumulation_steps = max(1, math.ceil(16 / args.batch_size))
+    per_device_batch = max(1, min(args.batch_size, selection.max_per_device_batch))
+    gradient_accumulation_steps = max(1, math.ceil(16 / per_device_batch))
     training_args = TrainingArguments(
         output_dir=str(args.output_dir),
-        per_device_train_batch_size=args.batch_size,
+        per_device_train_batch_size=per_device_batch,
         gradient_accumulation_steps=gradient_accumulation_steps,
+        gradient_checkpointing=selection.gradient_checkpointing,
         learning_rate=args.learning_rate,
         num_train_epochs=args.epochs,
         logging_steps=10,
@@ -251,6 +270,8 @@ def run_training(args: argparse.Namespace) -> TrainingMetadata:
         batch_size=args.batch_size,
         lora_r=args.lora_r,
         lora_alpha=args.lora_alpha,
+        per_device_batch_size=per_device_batch,
+        gradient_accumulation_steps=gradient_accumulation_steps,
         dataset_path=str(args.dataset),
         model_output_dir=str(args.output_dir),
         crisis_resource_message=CRISIS_RESOURCE_MESSAGE,
@@ -285,7 +306,9 @@ Serenity is a locally fine-tuned assistant designed for compassionate, non-diagn
 ## Training Parameters
 - Epochs: `{metadata.epochs}`
 - Learning rate: `{metadata.learning_rate}`
-- Batch size: `{metadata.batch_size}`
+- Batch size (requested): `{metadata.batch_size}`
+- Per-device batch: `{metadata.per_device_batch_size}`
+- Gradient accumulation: `{metadata.gradient_accumulation_steps}`
 - LoRA rank: `{metadata.lora_r}`
 - LoRA alpha: `{metadata.lora_alpha}`
 
