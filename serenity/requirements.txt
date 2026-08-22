@@ -1,17 +1,9 @@
-fastapi
-uvicorn[standard]
-transformers
-peft
-bitsandbytes
-datasets
-torch
-openai-whisper
-TTS
-webrtcvad
-sqlalchemy
-slowapi
-python-multipart
-httpx
-tqdm
-accelerate
-safetensors
+# Shared API layer. Every Serenity service installs this file; the heavier ML
+# stacks live in the per-service files so their pins never have to co-resolve.
+fastapi>=0.115,<1
+uvicorn[standard]>=0.30,<1
+httpx>=0.27,<1
+sqlalchemy>=2.0,<3
+slowapi>=0.1.9,<0.2
+limits>=3.0,<6
+python-multipart>=0.0.9,<1
