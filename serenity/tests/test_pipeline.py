@@ -56,6 +56,26 @@ def _loader(mapping):
     return _load
 
 
+def test_revision_is_forwarded_to_load_dataset(monkeypatch, config):
+    """EmpatheticDialogues only loads from the hub's auto-converted parquet revision."""
+
+    calls = []
+
+    def _fake_load_dataset(candidate, name=None, cache_dir=None, revision=None):
+        calls.append((candidate, revision))
+        raise RuntimeError("stop after recording the call")
+
+    monkeypatch.setattr(pipeline, "load_dataset", _fake_load_dataset)
+
+    with pytest.raises(RuntimeError):
+        pipeline.load_source(config.empathetic_dialogues, config.cache_dir)
+
+    assert calls, "load_dataset was never called"
+    assert calls[0] == ("facebook/empathetic_dialogues", "refs/convert/parquet")
+    # The bare id is still tried as a fallback.
+    assert "empathetic_dialogues" in [candidate for candidate, _ in calls]
+
+
 def test_all_sources_contribute(monkeypatch, config):
     monkeypatch.setattr(pipeline, "load_source", _loader({
         "counsel_chat": COUNSEL_ROWS,

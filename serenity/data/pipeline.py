@@ -60,6 +60,7 @@ class DatasetSource:
     split_candidates: Sequence[str]
     local_path: str | None = None
     subset: str | None = None
+    revision: str | None = None
 
 
 @dataclass(slots=True)
@@ -81,8 +82,12 @@ class DataPrepConfig:
     empathetic_dialogues: DatasetSource = field(
         default_factory=lambda: DatasetSource(
             name="empathetic_dialogues",
-            candidates=("empathetic_dialogues",),
+            candidates=("facebook/empathetic_dialogues", "empathetic_dialogues"),
             split_candidates=("train", "validation", "test"),
+            # datasets 4.x removed dataset-script execution, and both hub copies
+            # of this dataset are script-based. The hub's auto-converted parquet
+            # revision is the only loadable form.
+            revision="refs/convert/parquet",
         )
     )
     psyqa: DatasetSource = field(
@@ -198,6 +203,7 @@ def load_source(source: DatasetSource, cache_dir: Path) -> list[Dataset]:
                 candidate,
                 name=source.subset,
                 cache_dir=str(cache_dir),
+                revision=source.revision,
             )
             return _coerce_splits(dataset, source.split_candidates)
         except Exception as exc:  # pragma: no cover - depends on runtime availability
