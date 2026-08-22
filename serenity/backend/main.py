@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import logging
 import os
 import uuid
 from datetime import datetime, timezone
@@ -10,12 +12,10 @@ from typing import Any
 import httpx
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse
+from limits import RateLimitItemPerMinute
 from pydantic import BaseModel, Field
 from slowapi import Limiter
-from slowapi.errors import RateLimitExceeded
-from slowapi.extension import _rate_limit_exceeded_handler
-from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
 
 from backend.crisis_detector import CRISIS_RESOURCE_MESSAGE, detect_crisis
@@ -40,12 +40,18 @@ MODEL_SERVER_URL = _service_url("SERENITY_MODEL_SERVER_URL", "http://127.0.0.1:8
 STT_SERVER_URL = _service_url("SERENITY_STT_SERVER_URL", "http://127.0.0.1:8002")
 TTS_SERVER_URL = _service_url("SERENITY_TTS_SERVER_URL", "http://127.0.0.1:8003")
 SERVICE_TIMEOUT_SECONDS = float(os.getenv("SERENITY_HTTP_TIMEOUT", "120"))
+RATE_LIMIT_PER_MINUTE = int(os.getenv("SERENITY_RATE_LIMIT_PER_MINUTE", "60"))
 
+logger = logging.getLogger(__name__)
+
+# The Limiter is used purely as a storage/strategy backend; limits are applied
+# manually in _apply_rate_limit because the rate-limit key comes from the request
+# body (session_id), which slowapi's decorator cannot see.
 limiter = Limiter(key_func=_session_rate_key, default_limits=[])
+RATE_LIMIT_ITEM = RateLimitItemPerMinute(RATE_LIMIT_PER_MINUTE)
+
 app = FastAPI(title="Serenity Backend", version="1.0.0")
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -81,6 +87,24 @@ class ChatTextResponse(BaseModel):
     crisis_message: str | None = None
 
 
+class ChatVoiceResponse(BaseModel):
+    """Response payload for voice chat conversations.
+
+    Audio is returned base64-encoded inside JSON rather than as a raw body with
+    metadata in headers: HTTP header values cannot contain newlines and must be
+    latin-1 encodable, which neither model replies nor transcripts can guarantee.
+    """
+
+    reply: str
+    transcript: str
+    session_id: str
+    timestamp: str
+    crisis_detected: bool = False
+    crisis_message: str | None = None
+    audio_base64: str
+    audio_media_type: str
+
+
 def _ensure_session_id(session_id: str | None) -> str:
     """Create a UUID-based session ID when one is not provided."""
 
@@ -100,12 +124,15 @@ def _format_history(messages: list[ChatMessage], latest_message: str) -> str:
 
 
 def _apply_rate_limit(request: Request, session_id: str) -> None:
-    """Enforce the configured rate limit for a session."""
+    """Enforce the configured per-session rate limit."""
 
     request.state.session_id = session_id
-    limit_item = limiter._limiter.parse("60/minute")
-    if not limiter.limiter.hit(limit_item, session_id):
-        raise RateLimitExceeded(detail="Rate limit exceeded for this session.")
+    if not limiter.limiter.hit(RATE_LIMIT_ITEM, session_id):
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded for this session.",
+            headers={"Retry-After": "60"},
+        )
 
 
 async def _generate_reply(prompt: str) -> str:
@@ -184,10 +211,22 @@ async def _chat_text_impl(request: Request, payload: ChatTextRequest) -> ChatTex
 
     crisis = detect_crisis(payload.message)
     prompt = _format_history(payload.history, payload.message)
-    reply = await _generate_reply(prompt)
+
+    try:
+        reply = await _generate_reply(prompt)
+    except HTTPException:
+        # A crisis message must never be swallowed by an upstream failure. If the
+        # model server is down we still return the hotline resources.
+        if not crisis.crisis_detected:
+            raise
+        logger.exception(
+            "Model generation failed for a crisis message; returning resources only (session=%s).",
+            session_id,
+        )
+        reply = ""
 
     if crisis.crisis_detected:
-        reply = f"{reply}\n\n{CRISIS_RESOURCE_MESSAGE}"
+        reply = f"{reply}\n\n{CRISIS_RESOURCE_MESSAGE}".strip()
 
     save_messages(session_id, [("user", payload.message), ("assistant", reply)])
     timestamp = datetime.now(timezone.utc).isoformat()
@@ -214,12 +253,12 @@ async def chat_text(request: Request, payload: ChatTextRequest) -> ChatTextRespo
     return await _chat_text_impl(request, payload)
 
 
-@app.post("/chat/voice")
+@app.post("/chat/voice", response_model=ChatVoiceResponse)
 async def chat_voice(
     request: Request,
     audio_file: UploadFile = File(...),
     session_id: str | None = Form(default=None),
-) -> Response:
+) -> ChatVoiceResponse:
     """Handle a voice chat round trip from transcription through synthesis."""
 
     transcript = await _transcribe_audio(audio_file)
@@ -228,13 +267,16 @@ async def chat_voice(
         ChatTextRequest(session_id=session_id, message=transcript, history=[]),
     )
     audio_bytes, media_type = await _speak_text(text_response.reply)
-    headers = {
-        "X-Transcript": transcript,
-        "X-Session-Id": text_response.session_id,
-        "X-Reply-Text": text_response.reply,
-        "X-Crisis-Detected": str(text_response.crisis_detected).lower(),
-    }
-    return Response(content=audio_bytes, media_type=media_type, headers=headers)
+    return ChatVoiceResponse(
+        reply=text_response.reply,
+        transcript=transcript,
+        session_id=text_response.session_id,
+        timestamp=text_response.timestamp,
+        crisis_detected=text_response.crisis_detected,
+        crisis_message=text_response.crisis_message,
+        audio_base64=base64.b64encode(audio_bytes).decode("ascii"),
+        audio_media_type=media_type,
+    )
 
 
 @app.get("/chat/history/{session_id}")
