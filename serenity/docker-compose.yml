@@ -5,6 +5,7 @@ services:
       dockerfile: backend/Dockerfile
       args:
         REQUIREMENTS: requirements-model.txt
+        TORCH_INDEX_URL: ${SERENITY_TORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}
     command: uvicorn backend.model_server:app --host 0.0.0.0 --port 8001
     environment:
       PYTHONPATH: /app/serenity
@@ -22,6 +23,7 @@ services:
       dockerfile: backend/Dockerfile
       args:
         REQUIREMENTS: requirements-stt.txt
+        TORCH_INDEX_URL: ${SERENITY_TORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}
     command: uvicorn backend.stt_server:app --host 0.0.0.0 --port 8002
     environment:
       PYTHONPATH: /app/serenity
@@ -38,6 +40,7 @@ services:
       dockerfile: backend/Dockerfile
       args:
         REQUIREMENTS: requirements-tts.txt
+        TORCH_INDEX_URL: ${SERENITY_TORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}
     command: uvicorn backend.tts_server:app --host 0.0.0.0 --port 8003
     environment:
       PYTHONPATH: /app/serenity
@@ -52,6 +55,7 @@ services:
       dockerfile: backend/Dockerfile
       args:
         REQUIREMENTS: requirements-vad.txt
+        TORCH_INDEX_URL: ${SERENITY_TORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}
     command: uvicorn backend.vad_server:app --host 0.0.0.0 --port 8004
     environment:
       PYTHONPATH: /app/serenity
@@ -66,6 +70,7 @@ services:
       dockerfile: backend/Dockerfile
       args:
         REQUIREMENTS: requirements.txt
+        TORCH_INDEX_URL: ${SERENITY_TORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}
     command: uvicorn backend.main:app --host 0.0.0.0 --port 8000
     depends_on:
       - model-server
