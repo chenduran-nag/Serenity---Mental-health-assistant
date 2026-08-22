@@ -83,8 +83,18 @@ pins never have to resolve against one another:
 ### Docker path
 
 1. From `serenity/`, run `chmod +x start.sh` if needed.
-2. Prepare data and train a model (see [Fine-Tuning](#fine-tuning)) — the stack
-   starts without this, but cannot answer.
+2. Prepare data and train a model — the stack starts without this, but cannot
+   answer. None of the runtime services carry the training dependencies, so this
+   runs in the dedicated `trainer` image:
+
+   ```bash
+   docker compose --profile training run --rm trainer python scripts/download_data.py
+   docker compose --profile training run --rm trainer python scripts/finetune.py
+   ```
+
+   The `training` profile keeps `trainer` out of the normal `up`; it is a one-off
+   task container, not a service. It mounts the repo, so the corpus and model
+   artifacts land in `data/processed/` and `models/mental_health_llm/` on the host.
 3. Start the full stack with `./start.sh`.
 4. Open `http://localhost:5173`.
 5. Check `http://localhost:8000/health` to see which services came up.
