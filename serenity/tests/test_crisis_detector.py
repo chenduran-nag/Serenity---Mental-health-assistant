@@ -22,6 +22,36 @@ CRISIS_PHRASES = [
     "I keep overdosing on my meds.",
 ]
 
+# Inflected forms. Every one of these was missed by the original fixed-string
+# patterns; the first was observed going undetected against the live stack.
+INFLECTED_CRISIS_PHRASES = [
+    "I have been thinking about ending my life.",
+    "I keep thinking about killing myself.",
+    "I have been hurting myself again.",
+    "I have been harming myself.",
+    "I have been cutting myself.",
+    "I have been self-harming for months.",
+    "I wanted to die last night.",
+    "I have been wanting to die.",
+    "I am thinking of taking my own life.",
+    "I might just end it all.",
+    "I don't want to live anymore.",
+    "I don't want to wake up tomorrow.",
+    "Everyone would be better off dead without me.",
+    "There is no reason to live.",
+    "I see no point in living.",
+    "I have thought about ending my own life.",
+]
+
+
+@pytest.mark.parametrize("text", INFLECTED_CRISIS_PHRASES)
+def test_inflected_crisis_phrases_are_detected(text):
+    """Regression: 'ending my life' went undetected because only 'end my life' matched."""
+
+    result = detect_crisis(text)
+    assert result.crisis_detected is True, f"missed crisis disclosure: {text!r}"
+    assert result.resource_message == CRISIS_RESOURCE_MESSAGE
+
 BENIGN_PHRASES = [
     "I had a stressful week at work.",
     "My manager keeps ignoring me and it hurts.",
@@ -29,6 +59,15 @@ BENIGN_PHRASES = [
     "The presentation went badly and I feel embarrassed.",
     "I want to dye my hair blue.",
     "I have been feeling low but I am managing.",
+    # Idioms that sit close to the crisis vocabulary without being disclosures.
+    "My phone died during the call.",
+    "The deadline is killing me at work.",
+    "I ended my subscription yesterday.",
+    "That movie was to die for.",
+    "I am dead tired after that shift.",
+    "I cut myself a slice of cake.",
+    "I cut myself some slack for once.",
+    "I want to live abroad someday.",
 ]
 
 
