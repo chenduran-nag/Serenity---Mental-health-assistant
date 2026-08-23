@@ -87,8 +87,9 @@ def test_six_gb_card_uses_the_gpu(monkeypatch):
     assert selection.model_id == "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
     assert selection.strategy == "qlora"
     assert selection.load_in_4bit is True
-    # 6 GB cannot hold a batch of 4 at this sequence length.
-    assert selection.max_per_device_batch == 1
+    # Measured on a real 2060: a batch of 1 used 1.9 GB of 6.1 GB and left the GPU
+    # 39% utilised, so the small-card path was input-bound, not memory-bound.
+    assert selection.max_per_device_batch == 4
     assert selection.gradient_checkpointing is True
 
 
