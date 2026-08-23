@@ -22,6 +22,11 @@ SYSTEM_PROMPT = (
     "professional help for serious concerns."
 )
 
+# Training wraps each turn in [USER]/[ASSISTANT] blocks, so a completion that
+# runs past its own turn starts inventing the next one. Generation stops at
+# eos_token_id alone, which the model rarely emits, so completions are cut here.
+TURN_MARKERS: tuple[str, ...] = ("[/ASSISTANT]", "[ASSISTANT]", "[USER]", "[/USER]", "[SYSTEM]", "<s>", "</s>")
+
 MODEL_DIR = Path(os.getenv("SERENITY_MODEL_DIR", Path(__file__).resolve().parent.parent / "models" / "mental_health_llm"))
 MODEL_SERVER_PORT = int(os.getenv("SERENITY_MODEL_PORT", "8001"))
 MAX_CONTEXT_LENGTH = int(os.getenv("SERENITY_MODEL_MAX_CONTEXT", "1024"))
@@ -131,6 +136,17 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(title="Serenity Model Server", version="1.0.0", lifespan=lifespan)
 
 
+def trim_to_single_turn(text: str) -> str:
+    """Cut a completion at the first turn marker the model emits."""
+
+    cut = len(text)
+    for marker in TURN_MARKERS:
+        index = text.find(marker)
+        if index != -1:
+            cut = min(cut, index)
+    return text[:cut].strip()
+
+
 @app.post("/generate", response_model=GenerateResponse)
 async def generate(payload: GenerateRequest) -> GenerateResponse:
     """Generate a response from the locally fine-tuned model."""
@@ -154,7 +170,8 @@ async def generate(payload: GenerateRequest) -> GenerateResponse:
             pad_token_id=tokenizer.pad_token_id,
         )
 
-    generated = tokenizer.decode(output[0][inputs["input_ids"].shape[1] :], skip_special_tokens=True).strip()
+    generated = tokenizer.decode(output[0][inputs["input_ids"].shape[1] :], skip_special_tokens=True)
+    generated = trim_to_single_turn(generated)
     if not generated:
         raise HTTPException(status_code=502, detail="Model generated an empty response.")
     return GenerateResponse(response=generated)

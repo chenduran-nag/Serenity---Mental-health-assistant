@@ -10,6 +10,10 @@ services:
     environment:
       PYTHONPATH: /app/serenity
       SERENITY_MODEL_DIR: /app/serenity/models/mental_health_llm
+      # The adapter holds only LoRA weights, so the base model is fetched at
+      # startup. Point at the cache the trainer already filled to avoid
+      # re-downloading it on every container start.
+      HF_HOME: /app/serenity/data/cache/huggingface
       NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-none}
       NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}
     ports:
