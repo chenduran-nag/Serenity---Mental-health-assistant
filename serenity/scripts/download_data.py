@@ -53,6 +53,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional local file or directory for PsyQA.",
     )
     parser.add_argument(
+        "--max-examples-per-source",
+        type=int,
+        default=None,
+        help=(
+            "Cap each source at N examples, sampled deterministically. "
+            "Without it EmpatheticDialogues outnumbers Counsel Chat about 29:1."
+        ),
+    )
+    parser.add_argument(
         "--summary-path",
         type=Path,
         default=ROOT / "data" / "processed" / "dataset_summary.json",
@@ -67,7 +76,11 @@ def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
 
-    config = DataPrepConfig(output_path=args.output, cache_dir=args.cache_dir)
+    config = DataPrepConfig(
+        output_path=args.output,
+        cache_dir=args.cache_dir,
+        max_examples_per_source=args.max_examples_per_source,
+    )
     config.counsel_chat.local_path = args.counsel_chat_local
     config.empathetic_dialogues.local_path = args.empathetic_dialogues_local
     config.psyqa.local_path = args.psyqa_local

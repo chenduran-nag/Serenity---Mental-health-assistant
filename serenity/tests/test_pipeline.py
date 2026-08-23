@@ -140,6 +140,84 @@ def test_sources_that_yield_nothing_raise(monkeypatch, config):
         build_training_corpus(config)
 
 
+def test_per_source_cap_rebalances_the_mix(monkeypatch, config):
+    """EmpatheticDialogues outnumbers Counsel Chat ~29:1 without a cap."""
+
+    # EmpatheticDialogues rows are alternating turns; 51 turns yield 50 pairs.
+    many = [
+        {"conv_id": "c1", "speaker_idx": i % 2, "utterance": f"turn number {i}"}
+        for i in range(51)
+    ]
+    monkeypatch.setattr(pipeline, "load_source", _loader({
+        "counsel_chat": COUNSEL_ROWS,
+        "empathetic_dialogues": many,
+        "psyqa": RuntimeError("skip"),
+    }))
+    config.max_examples_per_source = 10
+
+    result = build_training_corpus(config)
+    by_name = {outcome.name: outcome.example_count for outcome in result.outcomes}
+
+    assert by_name["empathetic_dialogues"] == 10
+    # A source already under the cap is untouched.
+    assert by_name["counsel_chat"] == len(COUNSEL_ROWS)
+
+
+def test_cap_samples_rather_than_truncating(monkeypatch, config):
+    """Sources are ordered by conversation, so the head is not representative."""
+
+    many = [
+        {"id": f"e{i}", "question": f"prompt {i}", "answer": f"answer {i}"}
+        for i in range(100)
+    ]
+    monkeypatch.setattr(pipeline, "load_source", _loader({
+        "counsel_chat": many,
+        "empathetic_dialogues": RuntimeError("skip"),
+        "psyqa": RuntimeError("skip"),
+    }))
+    config.max_examples_per_source = 10
+
+    prompts = [ex.prompt for ex in build_training_corpus(config).examples]
+    assert len(prompts) == 10
+    assert prompts != [f"prompt {i}" for i in range(10)], "cap truncated instead of sampling"
+
+
+def test_cap_is_deterministic(monkeypatch, config):
+    many = [
+        {"id": f"e{i}", "question": f"prompt {i}", "answer": f"answer {i}"}
+        for i in range(100)
+    ]
+    loader = _loader({
+        "counsel_chat": many,
+        "empathetic_dialogues": RuntimeError("skip"),
+        "psyqa": RuntimeError("skip"),
+    })
+    monkeypatch.setattr(pipeline, "load_source", loader)
+    config.max_examples_per_source = 10
+
+    first = [ex.prompt for ex in build_training_corpus(config).examples]
+    second = [ex.prompt for ex in build_training_corpus(config).examples]
+    assert first == second
+
+
+def test_comma_artifacts_are_stripped(monkeypatch, config):
+    """EmpatheticDialogues encodes commas as a literal _comma_ token."""
+
+    rows = [{"id": "a1", "question": "I was scared_comma_ then numb.",
+             "answer": "Oh_comma_ I'm sorry to hear that."}]
+    monkeypatch.setattr(pipeline, "load_source", _loader({
+        "counsel_chat": rows,
+        "empathetic_dialogues": RuntimeError("skip"),
+        "psyqa": RuntimeError("skip"),
+    }))
+
+    example = build_training_corpus(config).examples[0]
+    assert "_comma_" not in example.prompt
+    assert "_comma_" not in example.response
+    assert example.prompt == "I was scared, then numb."
+    assert example.response == "Oh, I'm sorry to hear that."
+
+
 def test_examples_are_deduplicated(monkeypatch, config):
     duplicated = COUNSEL_ROWS + COUNSEL_ROWS
 

@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass, field
 import hashlib
 import json
 import logging
+import random
 import re
 from pathlib import Path
 from typing import Any, Iterable, Iterator, Mapping, Sequence
@@ -78,6 +79,11 @@ class DataPrepConfig:
 
     output_path: Path
     cache_dir: Path = Path("data/cache")
+    # EmpatheticDialogues outnumbers Counsel Chat roughly 29:1, which drowns the
+    # long-form counselling material in short conversational turns. A cap
+    # rebalances the mix; None keeps every example.
+    max_examples_per_source: int | None = None
+    sample_seed: int = 20260823
     counsel_chat: DatasetSource = field(
         default_factory=lambda: DatasetSource(
             name="counsel_chat",
@@ -184,6 +190,13 @@ def build_training_corpus(config: DataPrepConfig) -> CorpusBuildResult:
                 )
             )
             continue
+
+        cap = config.max_examples_per_source
+        if cap is not None and len(extracted) > cap:
+            # Sample rather than truncate: the sources are ordered by
+            # conversation, so the head is not representative.
+            extracted = random.Random(config.sample_seed).sample(extracted, cap)
+            logger.info("Capped %r to %d examples.", source.name, cap)
 
         all_examples.extend(extracted)
         outcomes.append(SourceOutcome(name=source.name, ok=True, example_count=len(extracted)))
