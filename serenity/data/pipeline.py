@@ -47,6 +47,14 @@ DATASET_ARTIFACTS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"_pipe_"), "|"),
 )
 
+# Counsel Chat carries 9,124 non-breaking spaces. A model trained on them emits
+# byte sequences that decode to U+FFFD, so replies came back reading
+# "...anxiety.� Therapy can help...".
+UNICODE_SPACES: re.Pattern[str] = re.compile(
+    "[   -​  　﻿]"
+)
+REPLACEMENT_CHAR: re.Pattern[str] = re.compile("�")
+
 PII_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b", re.IGNORECASE), "[redacted_email]"),
     (
@@ -456,6 +464,12 @@ def _normalize_text(text: str) -> str:
 
     for pattern, replacement in DATASET_ARTIFACTS:
         text = pattern.sub(replacement, text)
+    # Counsel Chat carries 9,124 non-breaking spaces. A model trained on them
+    # emits byte sequences that decode to U+FFFD, so replies came back reading
+    # "...anxiety.�\xa0Therapy can help...". Fold exotic spaces to plain
+    # ones and drop any replacement characters already present.
+    text = REPLACEMENT_CHAR.sub("", text)
+    text = UNICODE_SPACES.sub(" ", text)
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
