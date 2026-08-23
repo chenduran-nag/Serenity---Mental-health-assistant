@@ -223,21 +223,16 @@ async def _chat_text_impl(request: Request, payload: ChatTextRequest) -> ChatTex
 
     crisis = detect_crisis(payload.message)
 
-    try:
-        reply = await _generate_reply(payload.message, payload.history)
-    except HTTPException:
-        # A crisis message must never be swallowed by an upstream failure. If the
-        # model server is down we still return the hotline resources.
-        if not crisis.crisis_detected:
-            raise
-        logger.exception(
-            "Model generation failed for a crisis message; returning resources only (session=%s).",
-            session_id,
-        )
-        reply = ""
-
     if crisis.crisis_detected:
-        reply = f"{reply}\n\n{CRISIS_RESOURCE_MESSAGE}".strip()
+        # The model does not get to improvise at a disclosure. Asked about ending
+        # their life, the fine-tuned model replied "You can't just end your life.
+        # You can't do that." - dismissive, and the opposite of what the moment
+        # needs. Only the vetted resource message is returned, and generation is
+        # skipped entirely so no upstream failure can interfere with it.
+        logger.info("Crisis detected; returning resources without generation (session=%s).", session_id)
+        reply = CRISIS_RESOURCE_MESSAGE
+    else:
+        reply = await _generate_reply(payload.message, payload.history)
 
     save_messages(session_id, [("user", payload.message), ("assistant", reply)])
     timestamp = datetime.now(timezone.utc).isoformat()

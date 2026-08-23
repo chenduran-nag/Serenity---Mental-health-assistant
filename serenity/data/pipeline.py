@@ -37,6 +37,15 @@ RESPONSE_FIELDS: tuple[str, ...] = (
     "utterance",
 )
 
+# EmpatheticDialogues encodes punctuation as literal tokens. 49% of the merged
+# corpus carried "_comma_" (57,336 occurrences), and a model fine-tuned on it
+# reproduces the token verbatim - observed live as "Oh_comma_ I'm sorry to hear
+# that." These are substituted before any other cleaning.
+DATASET_ARTIFACTS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"_comma_"), ","),
+    (re.compile(r"_pipe_"), "|"),
+)
+
 PII_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b", re.IGNORECASE), "[redacted_email]"),
     (
@@ -432,9 +441,14 @@ def _clean_text(text: str) -> str:
 def _normalize_text(text: str) -> str:
     """Collapse line endings and repeated whitespace."""
 
+    for pattern, replacement in DATASET_ARTIFACTS:
+        text = pattern.sub(replacement, text)
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
+    # "word _comma_ next" collapses to "word , next", so close the gap the
+    # substitution leaves in front of punctuation.
+    text = re.sub(r"[ \t]+([,.!?;:])", r"\1", text)
     return text.strip()
 
 
