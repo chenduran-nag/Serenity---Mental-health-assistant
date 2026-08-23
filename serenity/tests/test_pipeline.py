@@ -218,6 +218,43 @@ def test_comma_artifacts_are_stripped(monkeypatch, config):
     assert example.response == "Oh, I'm sorry to hear that."
 
 
+@pytest.mark.parametrize(
+    "codepoint",
+    [0x00A0, 0x1680, 0x2000, 0x200B, 0x202F, 0x205F, 0x3000, 0xFEFF],
+    ids=lambda c: f"U+{c:04X}",
+)
+def test_exotic_spaces_are_folded(monkeypatch, config, codepoint):
+    """Counsel Chat carries 9,124 non-breaking spaces; a model trained on them
+    emits bytes that decode to U+FFFD."""
+
+    rows = [{"id": "u1", "question": "anxiety." + chr(codepoint) + "Therapy helps.",
+             "answer": "You" + chr(codepoint) + "are not alone."}]
+    monkeypatch.setattr(pipeline, "load_source", _loader({
+        "counsel_chat": rows,
+        "empathetic_dialogues": RuntimeError("skip"),
+        "psyqa": RuntimeError("skip"),
+    }))
+
+    example = build_training_corpus(config).examples[0]
+    assert all(ord(ch) < 0x80 for ch in example.prompt + example.response)
+    assert example.response == "You are not alone."
+
+
+def test_replacement_characters_are_dropped(monkeypatch, config):
+    rows = [{"id": "u2", "question": "anxiety." + chr(0xFFFD) + chr(0xA0) + "Therapy helps.",
+             "answer": "Take" + chr(0xFFFD) + " care."}]
+    monkeypatch.setattr(pipeline, "load_source", _loader({
+        "counsel_chat": rows,
+        "empathetic_dialogues": RuntimeError("skip"),
+        "psyqa": RuntimeError("skip"),
+    }))
+
+    example = build_training_corpus(config).examples[0]
+    assert chr(0xFFFD) not in example.prompt
+    assert example.prompt == "anxiety. Therapy helps."
+    assert example.response == "Take care."
+
+
 def test_examples_are_deduplicated(monkeypatch, config):
     duplicated = COUNSEL_ROWS + COUNSEL_ROWS
 
