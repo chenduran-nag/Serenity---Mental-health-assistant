@@ -143,6 +143,30 @@ def test_crisis_message_is_appended(client, monkeypatch, session_id):
     assert CRISIS_RESOURCE_MESSAGE in body["reply"]
 
 
+def test_model_output_is_suppressed_on_crisis(client, monkeypatch, session_id):
+    """The model must not improvise at a disclosure; only the vetted text goes out."""
+
+    called = []
+
+    async def _fake(message, history=None):
+        called.append(message)
+        return "You can't just end your life. You can't do that."
+
+    monkeypatch.setattr(main_module, "_generate_reply", _fake)
+
+    response = client.post(
+        "/chat/text",
+        json={"session_id": session_id, "message": "I am thinking about ending my life.", "history": []},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["crisis_detected"] is True
+    assert body["reply"] == CRISIS_RESOURCE_MESSAGE
+    assert "You can't just end your life" not in body["reply"]
+    # Generation is skipped outright, so nothing upstream can interfere.
+    assert called == []
+
+
 def test_crisis_resources_survive_model_failure(client, monkeypatch, session_id):
     """Safety regression: a dead model server must not swallow the hotline message."""
 
