@@ -63,6 +63,7 @@ class TrainingMetadata:
     lora_alpha: int
     per_device_batch_size: int
     gradient_accumulation_steps: int
+    dataset_sources: dict[str, int]
     dataset_path: str
     model_output_dir: str
     crisis_resource_message: str
@@ -312,6 +313,7 @@ def run_training(args: argparse.Namespace) -> TrainingMetadata:
         lora_alpha=args.lora_alpha,
         per_device_batch_size=per_device_batch,
         gradient_accumulation_steps=gradient_accumulation_steps,
+        dataset_sources=_dataset_sources(args.dataset),
         dataset_path=str(args.dataset),
         model_output_dir=str(args.output_dir),
         crisis_resource_message=CRISIS_RESOURCE_MESSAGE,
@@ -324,8 +326,30 @@ def run_training(args: argparse.Namespace) -> TrainingMetadata:
     return metadata
 
 
+def _dataset_sources(dataset_path: Path) -> dict[str, int]:
+    """Read which sources actually contributed, written by download_data.py."""
+
+    summary_path = dataset_path.parent / "dataset_summary.json"
+    if not summary_path.exists():
+        return {}
+    try:
+        return dict(json.loads(summary_path.read_text(encoding="utf-8")).get("by_source", {}))
+    except (ValueError, OSError):
+        return {}
+
+
 def build_model_card(metadata: TrainingMetadata) -> str:
     """Generate a concise model card markdown document."""
+
+    # List the sources that actually contributed. The previous template hardcoded
+    # all three, which credited PsyQA even though it is gated and always skipped.
+    if metadata.dataset_sources:
+        sources_block = "\n".join(
+            f"- {name}: {count} examples"
+            for name, count in sorted(metadata.dataset_sources.items())
+        )
+    else:
+        sources_block = "- See `dataset_summary.json` beside the dataset."
 
     return f"""# Serenity Mental Health LLM
 
@@ -338,9 +362,7 @@ Serenity is a locally fine-tuned assistant designed for compassionate, non-diagn
 - Device target: `{metadata.device}`
 
 ## Training Data
-- Counsel Chat
-- EmpatheticDialogues
-- PsyQA
+{sources_block}
 - Merged JSONL at `{metadata.dataset_path}`
 
 ## Training Parameters
@@ -354,8 +376,11 @@ Serenity is a locally fine-tuned assistant designed for compassionate, non-diagn
 
 ## Safety Notes
 - The model is for supportive conversation only and must not be used for diagnosis.
-- Downstream services append crisis resources when self-harm or suicide risk signals appear.
-- Crisis resource text embedded during deployment: `{metadata.crisis_resource_message}`
+- This model does not answer crisis disclosures. When the detector in
+  `backend/crisis_detector.py` fires, `backend/main.py` skips generation entirely
+  and returns only the vetted resource message below, so nothing the model
+  produces reaches a user in that moment.
+- Crisis resource text returned in place of generation: `{metadata.crisis_resource_message}`
 """
 
 
