@@ -1,4 +1,8 @@
-const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
+// Empty by default, so requests go to the current origin and Vite's proxy
+// forwards them to the backend. That keeps the app single-origin, which is what
+// makes it shareable through one tunnel. Set VITE_BACKEND_URL to point at a
+// backend on a different host.
+const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || '').replace(/\/$/, '');
 
 async function unwrapJson(response) {
   if (!response.ok) {
