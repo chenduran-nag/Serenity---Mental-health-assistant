@@ -158,7 +158,11 @@ services:
     depends_on:
       - backend
     environment:
-      VITE_BACKEND_URL: ${VITE_BACKEND_URL:-http://localhost:8000}
+      # Empty means same-origin: the browser calls the Vite dev server, which
+      # proxies /chat and /health to the backend. One origin, one tunnel, no CORS.
+      VITE_BACKEND_URL: ${VITE_BACKEND_URL:-}
+      BACKEND_PROXY_TARGET: ${BACKEND_PROXY_TARGET:-http://backend:8000}
+      VITE_ALLOWED_HOSTS: ${VITE_ALLOWED_HOSTS:-}
     ports:
       - "${SERENITY_FRONTEND_PORT:-5173}:5173"
     volumes:
