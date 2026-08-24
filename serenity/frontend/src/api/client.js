@@ -36,7 +36,20 @@ export async function sendTextChat({ sessionId, message, history }) {
       history,
     }),
   });
-  return unwrapJson(response);
+
+  const data = await unwrapJson(response);
+
+  // The API speaks snake_case and the app speaks camelCase. Returning the raw
+  // body here meant response.crisisDetected was always undefined, so the crisis
+  // modal never opened, and response.sessionId was undefined, which wiped the
+  // session id after the first message.
+  return {
+    reply: data.reply,
+    sessionId: data.session_id,
+    timestamp: data.timestamp,
+    crisisDetected: Boolean(data.crisis_detected),
+    crisisMessage: data.crisis_message ?? null,
+  };
 }
 
 export async function sendVoiceChat({ audioBlob, sessionId }) {
