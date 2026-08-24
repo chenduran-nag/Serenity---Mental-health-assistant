@@ -37,6 +37,12 @@ export function AppProvider({ children }) {
   }, [sessions]);
 
   function registerSession(nextSessionId, preview, timestamp) {
+    // A missing id used to be stored anyway, leaving an entry that could never
+    // be reloaded because it fetched /chat/history/undefined.
+    if (!nextSessionId) {
+      return;
+    }
+
     setSessions((currentSessions) => {
       const nextSessions = currentSessions.filter((session) => session.sessionId !== nextSessionId);
       nextSessions.unshift({
