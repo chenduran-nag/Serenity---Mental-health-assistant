@@ -99,10 +99,40 @@ pins never have to resolve against one another:
 4. Open `http://localhost:5173`.
 5. Check `http://localhost:8000/health` to see which services came up.
 
+The frontend proxies `/chat` and `/health` to the backend, so the browser only
+ever talks to `http://localhost:5173` and CORS does not apply. The backend is
+still reachable directly on `:8000` for `curl` and the integration scripts.
+
 Compose builds a separate image per service, each with its own `REQUIREMENTS`
 build argument. `depends_on` controls start order only; it deliberately does not
 gate on health, since an untrained model server would otherwise block the whole
 stack from starting.
+
+#### Running on an NVIDIA GPU
+
+Strongly recommended. On CPU the model server measured **93 seconds for 32
+tokens**, so a default 256-token reply cannot finish inside the backend's 120s
+timeout and surfaces as `Model server is unavailable`. The same request takes
+about 30 seconds on a 6 GB card.
+
+`docker-compose.gpu.yml` is an overlay giving the model and STT servers CUDA
+wheels and a device reservation. It is a separate file because a device
+reservation makes a service impossible to start on a machine without an NVIDIA
+GPU:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
+```
+
+Fine-tuning has its own GPU service, since the CPU trainer would take many hours:
+
+```bash
+docker compose --profile training-gpu run --rm trainer-gpu python scripts/finetune.py --epochs 1
+```
+
+Both default to the cu121 wheel index, which still ships `sm_75` kernels that
+Turing cards such as the RTX 2060 need. Override with `SERENITY_CUDA_INDEX_URL`
+for newer hardware.
 
 #### Disk usage and CPU vs GPU wheels
 
