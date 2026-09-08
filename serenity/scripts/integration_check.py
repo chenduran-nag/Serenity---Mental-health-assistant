@@ -47,7 +47,9 @@ def main() -> int:
                     headers={"X-Session-Id": "integration-check-voice"},
                 )
             voice_response.raise_for_status()
-            report["voice_chat"] = "PASS" if voice_response.content else "FAIL"
+            voice_payload = voice_response.json()
+            report["voice_chat"] = "PASS" if voice_payload.get("audio_base64") else "FAIL"
+            report["voice_transcript_preview"] = str(voice_payload.get("transcript", ""))[:120]
         elif args.voice_file is not None:
             report["voice_chat"] = f"FAIL (missing file: {args.voice_file})"
 

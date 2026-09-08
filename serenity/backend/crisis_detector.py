@@ -25,6 +25,17 @@ CRISIS_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
 )
 
 
+# iOS, macOS, and Word substitute typographic apostrophes automatically, so a
+# pasted "I can't go on" often arrives with U+2019 and would slip past the
+# ASCII-only patterns above.
+_APOSTROPHE_TRANSLATION: Final[dict[int, str]] = {
+    0x2018: "'",  # left single quotation mark
+    0x2019: "'",  # right single quotation mark
+    0x02BC: "'",  # modifier letter apostrophe
+    0x2032: "'",  # prime
+}
+
+
 @dataclass(frozen=True)
 class CrisisDetectionResult:
     """Structured crisis detection outcome."""
@@ -34,10 +45,17 @@ class CrisisDetectionResult:
     resource_message: str | None
 
 
+def normalize_for_matching(text: str) -> str:
+    """Fold typographic apostrophe variants down to the ASCII form."""
+
+    return text.translate(_APOSTROPHE_TRANSLATION)
+
+
 def detect_crisis(text: str) -> CrisisDetectionResult:
     """Detect whether user input suggests immediate crisis risk."""
 
-    matches = tuple(pattern.pattern for pattern in CRISIS_PATTERNS if pattern.search(text))
+    normalized = normalize_for_matching(text)
+    matches = tuple(pattern.pattern for pattern in CRISIS_PATTERNS if pattern.search(normalized))
     return CrisisDetectionResult(
         crisis_detected=bool(matches),
         matched_patterns=matches,
