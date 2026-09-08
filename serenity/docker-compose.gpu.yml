@@ -1,0 +1,45 @@
+# GPU overlay. Layer it on top of the base file to serve the model on an NVIDIA
+# card instead of the CPU:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+#
+# start.sh applies this automatically when nvidia-smi is present.
+#
+# It is a separate file because a device reservation makes a service impossible
+# to start on a machine without an NVIDIA GPU, and because CUDA wheels are a
+# multi-gigabyte cost that CPU-only users should not pay.
+#
+# cu121 (torch 2.5.x) is the default: it still ships sm_75 kernels, which Turing
+# cards such as the RTX 2060 need. Override SERENITY_CUDA_INDEX_URL for newer
+# hardware.
+
+services:
+  model-server:
+    build:
+      args:
+        TORCH_INDEX_URL: ${SERENITY_CUDA_INDEX_URL:-https://download.pytorch.org/whl/cu121}
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  stt-server:
+    build:
+      args:
+        TORCH_INDEX_URL: ${SERENITY_CUDA_INDEX_URL:-https://download.pytorch.org/whl/cu121}
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

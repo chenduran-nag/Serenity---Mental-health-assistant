@@ -37,14 +37,14 @@ def session_id():
 
 
 def _stub_generate(monkeypatch, reply=MULTILINE_REPLY):
-    async def _fake(prompt):
+    async def _fake(message, history=None):
         return reply
 
     monkeypatch.setattr(main_module, "_generate_reply", _fake)
 
 
 def _stub_generate_failure(monkeypatch, status_code=503):
-    async def _fake(prompt):
+    async def _fake(message, history=None):
         raise HTTPException(status_code=status_code, detail="Model server is unavailable.")
 
     monkeypatch.setattr(main_module, "_generate_reply", _fake)
@@ -87,6 +87,37 @@ def test_chat_text_generates_session_id_when_absent(client, monkeypatch):
     assert uuid.UUID(response.json()["session_id"])
 
 
+def test_history_is_forwarded_to_the_model_server(client, monkeypatch, session_id):
+    """Prior turns must reach the model server as structured turns, not a flattened blob."""
+
+    captured = {}
+
+    async def _fake(message, history=None):
+        captured["message"] = message
+        captured["history"] = [(turn.role, turn.content) for turn in (history or [])]
+        return "I hear you."
+
+    monkeypatch.setattr(main_module, "_generate_reply", _fake)
+
+    response = client.post(
+        "/chat/text",
+        json={
+            "session_id": session_id,
+            "message": "And today was worse.",
+            "history": [
+                {"role": "user", "content": "I had a hard week."},
+                {"role": "assistant", "content": "That sounds heavy."},
+            ],
+        },
+    )
+    assert response.status_code == 200
+    assert captured["message"] == "And today was worse."
+    assert captured["history"] == [
+        ("user", "I had a hard week."),
+        ("assistant", "That sounds heavy."),
+    ]
+
+
 def test_model_failure_propagates_for_non_crisis(client, monkeypatch, session_id):
     _stub_generate_failure(monkeypatch)
     response = client.post(
@@ -110,6 +141,30 @@ def test_crisis_message_is_appended(client, monkeypatch, session_id):
     assert body["crisis_detected"] is True
     assert body["crisis_message"] == CRISIS_RESOURCE_MESSAGE
     assert CRISIS_RESOURCE_MESSAGE in body["reply"]
+
+
+def test_model_output_is_suppressed_on_crisis(client, monkeypatch, session_id):
+    """The model must not improvise at a disclosure; only the vetted text goes out."""
+
+    called = []
+
+    async def _fake(message, history=None):
+        called.append(message)
+        return "You can't just end your life. You can't do that."
+
+    monkeypatch.setattr(main_module, "_generate_reply", _fake)
+
+    response = client.post(
+        "/chat/text",
+        json={"session_id": session_id, "message": "I am thinking about ending my life.", "history": []},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["crisis_detected"] is True
+    assert body["reply"] == CRISIS_RESOURCE_MESSAGE
+    assert "You can't just end your life" not in body["reply"]
+    # Generation is skipped outright, so nothing upstream can interfere.
+    assert called == []
 
 
 def test_crisis_resources_survive_model_failure(client, monkeypatch, session_id):

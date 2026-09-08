@@ -1,0 +1,10 @@
+# backend/tts_server.py - local Coqui speech synthesis.
+# Coqui TTS requires Python >=3.9,<3.12 and is the reason the images pin 3.11.
+-r requirements.txt
+
+TTS>=0.22,<0.23
+torch>=2.1,<3
+numpy>=1.24.3,<2
+# Coqui declares transformers>=4.33 with no upper bound; without this cap pip
+# resolves to 5.x, which Coqui 0.22 predates.
+transformers>=4.40,<5

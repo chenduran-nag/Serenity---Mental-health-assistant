@@ -1,0 +1,7 @@
+# backend/stt_server.py - local Whisper transcription.
+# openai-whisper is source-only and pulls numba, which constrains numpy.
+-r requirements.txt
+
+openai-whisper>=20240930
+torch>=2.1,<3
+numpy>=1.24.3,<2

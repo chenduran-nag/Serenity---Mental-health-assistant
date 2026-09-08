@@ -5,12 +5,16 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 import hashlib
 import json
+import logging
+import random
 import re
 from pathlib import Path
 from typing import Any, Iterable, Iterator, Mapping, Sequence
 
 from datasets import Dataset, DatasetDict, IterableDataset, load_dataset
 
+
+logger = logging.getLogger(__name__)
 
 PROMPT_FIELDS: tuple[str, ...] = (
     "prompt",
@@ -33,6 +37,23 @@ RESPONSE_FIELDS: tuple[str, ...] = (
     "label",
     "utterance",
 )
+
+# EmpatheticDialogues encodes punctuation as literal tokens. 49% of the merged
+# corpus carried "_comma_" (57,336 occurrences), and a model fine-tuned on it
+# reproduces the token verbatim - observed live as "Oh_comma_ I'm sorry to hear
+# that." These are substituted before any other cleaning.
+DATASET_ARTIFACTS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"_comma_"), ","),
+    (re.compile(r"_pipe_"), "|"),
+)
+
+# Counsel Chat carries 9,124 non-breaking spaces. A model trained on them emits
+# byte sequences that decode to U+FFFD, so replies came back reading
+# "...anxiety.� Therapy can help...".
+UNICODE_SPACES: re.Pattern[str] = re.compile(
+    "[   -​  　﻿]"
+)
+REPLACEMENT_CHAR: re.Pattern[str] = re.compile("�")
 
 PII_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b", re.IGNORECASE), "[redacted_email]"),
@@ -57,6 +78,7 @@ class DatasetSource:
     split_candidates: Sequence[str]
     local_path: str | None = None
     subset: str | None = None
+    revision: str | None = None
 
 
 @dataclass(slots=True)
@@ -65,6 +87,11 @@ class DataPrepConfig:
 
     output_path: Path
     cache_dir: Path = Path("data/cache")
+    # EmpatheticDialogues outnumbers Counsel Chat roughly 29:1, which drowns the
+    # long-form counselling material in short conversational turns. A cap
+    # rebalances the mix; None keeps every example.
+    max_examples_per_source: int | None = None
+    sample_seed: int = 20260823
     counsel_chat: DatasetSource = field(
         default_factory=lambda: DatasetSource(
             name="counsel_chat",
@@ -78,8 +105,12 @@ class DataPrepConfig:
     empathetic_dialogues: DatasetSource = field(
         default_factory=lambda: DatasetSource(
             name="empathetic_dialogues",
-            candidates=("empathetic_dialogues",),
+            candidates=("facebook/empathetic_dialogues", "empathetic_dialogues"),
             split_candidates=("train", "validation", "test"),
+            # datasets 4.x removed dataset-script execution, and both hub copies
+            # of this dataset are script-based. The hub's auto-converted parquet
+            # revision is the only loadable form.
+            revision="refs/convert/parquet",
         )
     )
     psyqa: DatasetSource = field(
@@ -92,6 +123,30 @@ class DataPrepConfig:
             split_candidates=("train", "validation", "test"),
         )
     )
+
+
+@dataclass(slots=True)
+class SourceOutcome:
+    """Whether one configured dataset source contributed to the corpus."""
+
+    name: str
+    ok: bool
+    example_count: int
+    error: str | None = None
+
+
+@dataclass(slots=True)
+class CorpusBuildResult:
+    """The merged corpus plus a per-source record of what happened."""
+
+    examples: list["PreparedExample"]
+    outcomes: list[SourceOutcome]
+
+    @property
+    def skipped(self) -> list[SourceOutcome]:
+        """Return the sources that could not be loaded."""
+
+        return [outcome for outcome in self.outcomes if not outcome.ok]
 
 
 @dataclass(slots=True)
@@ -112,16 +167,57 @@ class PreparedExample:
         }
 
 
-def build_training_corpus(config: DataPrepConfig) -> list[PreparedExample]:
-    """Load all configured datasets and return deduplicated examples."""
+def build_training_corpus(config: DataPrepConfig) -> CorpusBuildResult:
+    """Load every configured dataset and return the deduplicated corpus.
+
+    Sources are independent: PsyQA is gated and unavailable to most users, so one
+    source failing to load is recorded and skipped rather than aborting the run.
+    Only a total failure - no source loaded at all - raises.
+    """
+
+    extractors = (
+        (config.counsel_chat, _extract_counsel_chat),
+        (config.empathetic_dialogues, _extract_empathetic_dialogues),
+        (config.psyqa, _extract_psyqa),
+    )
 
     all_examples: list[PreparedExample] = []
-    all_examples.extend(_extract_counsel_chat(load_source(config.counsel_chat, config.cache_dir)))
-    all_examples.extend(
-        _extract_empathetic_dialogues(load_source(config.empathetic_dialogues, config.cache_dir))
-    )
-    all_examples.extend(_extract_psyqa(load_source(config.psyqa, config.cache_dir)))
-    return deduplicate_examples(clean_examples(all_examples))
+    outcomes: list[SourceOutcome] = []
+
+    for source, extract in extractors:
+        try:
+            extracted = extract(load_source(source, config.cache_dir))
+        except Exception as exc:
+            logger.warning("Skipping dataset %r: %s", source.name, exc)
+            outcomes.append(
+                SourceOutcome(
+                    name=source.name,
+                    ok=False,
+                    example_count=0,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+            )
+            continue
+
+        cap = config.max_examples_per_source
+        if cap is not None and len(extracted) > cap:
+            # Sample rather than truncate: the sources are ordered by
+            # conversation, so the head is not representative.
+            extracted = random.Random(config.sample_seed).sample(extracted, cap)
+            logger.info("Capped %r to %d examples.", source.name, cap)
+
+        all_examples.extend(extracted)
+        outcomes.append(SourceOutcome(name=source.name, ok=True, example_count=len(extracted)))
+
+    if not any(outcome.ok for outcome in outcomes):
+        details = "; ".join(f"{outcome.name}: {outcome.error}" for outcome in outcomes)
+        raise RuntimeError(f"No datasets could be loaded. {details}")
+
+    examples = deduplicate_examples(clean_examples(all_examples))
+    if not examples:
+        raise RuntimeError("Datasets loaded but produced no usable prompt-response pairs.")
+
+    return CorpusBuildResult(examples=examples, outcomes=outcomes)
 
 
 def load_source(source: DatasetSource, cache_dir: Path) -> list[Dataset]:
@@ -137,6 +233,7 @@ def load_source(source: DatasetSource, cache_dir: Path) -> list[Dataset]:
                 candidate,
                 name=source.subset,
                 cache_dir=str(cache_dir),
+                revision=source.revision,
             )
             return _coerce_splits(dataset, source.split_candidates)
         except Exception as exc:  # pragma: no cover - depends on runtime availability
@@ -365,9 +462,20 @@ def _clean_text(text: str) -> str:
 def _normalize_text(text: str) -> str:
     """Collapse line endings and repeated whitespace."""
 
+    for pattern, replacement in DATASET_ARTIFACTS:
+        text = pattern.sub(replacement, text)
+    # Counsel Chat carries 9,124 non-breaking spaces. A model trained on them
+    # emits byte sequences that decode to U+FFFD, so replies came back reading
+    # "...anxiety.�\xa0Therapy can help...". Fold exotic spaces to plain
+    # ones and drop any replacement characters already present.
+    text = REPLACEMENT_CHAR.sub("", text)
+    text = UNICODE_SPACES.sub(" ", text)
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
+    # "word _comma_ next" collapses to "word , next", so close the gap the
+    # substitution leaves in front of punctuation.
+    text = re.sub(r"[ \t]+([,.!?;:])", r"\1", text)
     return text.strip()
 
 

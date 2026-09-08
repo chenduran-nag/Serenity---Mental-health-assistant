@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
+from dataclasses import asdict
 from pathlib import Path
 import sys
 
@@ -51,6 +53,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional local file or directory for PsyQA.",
     )
     parser.add_argument(
+        "--max-examples-per-source",
+        type=int,
+        default=None,
+        help=(
+            "Cap each source at N examples, sampled deterministically. "
+            "Without it EmpatheticDialogues outnumbers Counsel Chat about 29:1."
+        ),
+    )
+    parser.add_argument(
         "--summary-path",
         type=Path,
         default=ROOT / "data" / "processed" / "dataset_summary.json",
@@ -65,17 +76,27 @@ def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
 
-    config = DataPrepConfig(output_path=args.output, cache_dir=args.cache_dir)
+    config = DataPrepConfig(
+        output_path=args.output,
+        cache_dir=args.cache_dir,
+        max_examples_per_source=args.max_examples_per_source,
+    )
     config.counsel_chat.local_path = args.counsel_chat_local
     config.empathetic_dialogues.local_path = args.empathetic_dialogues_local
     config.psyqa.local_path = args.psyqa_local
 
-    examples = build_training_corpus(config)
-    write_jsonl(examples, args.output)
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
-    summary = dataset_summary(examples)
+    result = build_training_corpus(config)
+    write_jsonl(result.examples, args.output)
+
+    summary = dataset_summary(result.examples)
+    summary["sources"] = [asdict(outcome) for outcome in result.outcomes]
     args.summary_path.parent.mkdir(parents=True, exist_ok=True)
     args.summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+
+    for outcome in result.skipped:
+        print(f"WARNING: skipped {outcome.name}: {outcome.error}", file=sys.stderr)
 
     print(json.dumps({"output": str(args.output), **summary}, indent=2))
     return 0

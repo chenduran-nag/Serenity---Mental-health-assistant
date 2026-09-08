@@ -1,20 +1,21 @@
 {
   "project": "serenity",
   "created_at": "2026-03-29",
-  "status": "implementation_complete_partial_verification",
+  "updated_at": "2026-08-24",
+  "status": "running_end_to_end_verified",
   "phases": {
     "phase_1": {
       "status": "completed",
       "tasks": {
         "data_prep": "completed",
-        "voice_pipeline": "completed",
+        "voice_pipeline": "implemented_not_exercised",
         "frontend_scaffold": "completed"
       }
     },
     "phase_2": {
-      "status": "implemented_not_executed",
+      "status": "completed",
       "tasks": {
-        "fine_tuning": "scripted_not_run"
+        "fine_tuning": "executed"
       }
     },
     "phase_3": {
@@ -25,31 +26,11 @@
       }
     },
     "phase_4": {
-      "status": "partial",
+      "status": "completed",
       "tasks": {
         "devops": "completed",
-        "integration_test": "blocked_docker_daemon"
+        "integration_test": "passed"
       }
-    }
-  },
-  "agents": {
-    "orchestrator": {
-      "status": "active"
-    },
-    "data_finetune_agent": {
-      "status": "phase_1_completed"
-    },
-    "voice_pipeline_agent": {
-      "status": "reclaimed_by_orchestrator_completed"
-    },
-    "backend_orchestration_agent": {
-      "status": "completed_by_orchestrator_audit_spawn_failed"
-    },
-    "frontend_design_agent": {
-      "status": "reclaimed_by_orchestrator_completed"
-    },
-    "devops_integration_agent": {
-      "status": "completed_by_orchestrator_audit_spawn_failed"
     }
   },
   "artifacts": {
@@ -58,14 +39,29 @@
     "backend_api": "backend/main.py",
     "frontend_app": "frontend/",
     "docker_compose": "docker-compose.yml",
-    "integration_report": "Static validation passed; live startup blocked because Docker daemon is not running."
+    "gpu_overlay": "docker-compose.gpu.yml",
+    "tests": "tests/"
   },
+  "verified": {
+    "images_built": "all 6 services, 7.5 GB total with a shared CPU torch layer",
+    "corpus": "22612 examples, counsel_chat 2612 + empathetic_dialogues 20000, zero encoding artifacts",
+    "training": "TinyLlama-1.1B QLoRA, 1 epoch, 1414 steps in 1h06m on an RTX 2060",
+    "health": "model, stt, tts, vad all reporting ok",
+    "text_chat": "generates on GPU in roughly 30 seconds",
+    "crisis_path": "9 phrasings detected, each returning only the vetted resource message",
+    "tests_passing": 106
+  },
+  "known_gaps": [
+    "PsyQA is gated and excluded; supply --psyqa-local if access is granted.",
+    "The VAD service runs and is health-checked but the frontend never opens its socket; voice mode is manual push-to-talk.",
+    "Voice chat has not been exercised end to end with real audio.",
+    "Reply quality is bounded by TinyLlama-1.1B at one epoch; a 6 GB card caps the base model size.",
+    "Conversations are stored unencrypted in SQLite with no retention limit.",
+    "Model server runs CPU torch by default; docker-compose.gpu.yml is required for usable latency."
+  ],
   "notes": [
-    "Workspace initialized by orchestrator.",
-    "Phase 1 data preparation workflow implemented and validated by sub-agent.",
-    "Original voice/frontend workers were replaced after stalling to keep the orchestration moving.",
-    "All Python files in the project passed AST parsing validation.",
-    "docker compose config succeeded for the generated stack.",
-    "Live docker compose up --build could not run because Docker Desktop Linux engine is not available."
+    "Every stage from build to first chat message surfaced defects that static review had missed.",
+    "Crisis detection missed inflected phrasing such as 'ending my life' until it was tested against the running stack.",
+    "Model output is suppressed entirely on a crisis disclosure; only reviewed text is returned."
   ]
 }

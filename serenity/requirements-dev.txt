@@ -1,3 +1,5 @@
+# Test dependencies. The suite stubs the model, STT, and TTS services, so it
+# needs only the shared API layer - no torch, Whisper, or Coqui install.
 -r requirements.txt
 
-pytest
+pytest>=8.0,<9

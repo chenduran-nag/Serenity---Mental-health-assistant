@@ -10,8 +10,20 @@ RUN apt-get update \
 
 WORKDIR /app
 
-COPY requirements.txt /tmp/requirements.txt
-RUN pip install --upgrade pip && pip install -r /tmp/requirements.txt
+# torch lands in its own layer, installed by a command identical for every
+# service, so the image store keeps one copy rather than one per service.
+# CPU wheels are the default: docker-compose.yml defaults NVIDIA_VISIBLE_DEVICES
+# to none, so the CUDA runtime bundled into the PyPI wheels is dead weight worth
+# roughly 3 GB per image. Override TORCH_INDEX_URL to build GPU images.
+ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
+RUN pip install --upgrade pip && pip install --index-url ${TORCH_INDEX_URL} "torch>=2.1,<3" torchaudio
+
+# Each service then installs only its own stack, so the Whisper, Coqui, and
+# training pins never resolve against one another in a single environment.
+ARG REQUIREMENTS=requirements.txt
+
+COPY requirements*.txt /tmp/deps/
+RUN pip install -r /tmp/deps/${REQUIREMENTS}
 
 COPY . /app/serenity
 WORKDIR /app/serenity

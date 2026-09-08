@@ -1,4 +1,8 @@
-const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
+// Empty by default, so requests go to the current origin and Vite's proxy
+// forwards them to the backend. That keeps the app single-origin, which is what
+// makes it shareable through one tunnel. Set VITE_BACKEND_URL to point at a
+// backend on a different host.
+const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || '').replace(/\/$/, '');
 
 async function unwrapJson(response) {
   if (!response.ok) {
@@ -36,7 +40,20 @@ export async function sendTextChat({ sessionId, message, history }) {
       history,
     }),
   });
-  return unwrapJson(response);
+
+  const data = await unwrapJson(response);
+
+  // The API speaks snake_case and the app speaks camelCase. Returning the raw
+  // body here meant response.crisisDetected was always undefined, so the crisis
+  // modal never opened, and response.sessionId was undefined, which wiped the
+  // session id after the first message.
+  return {
+    reply: data.reply,
+    sessionId: data.session_id,
+    timestamp: data.timestamp,
+    crisisDetected: Boolean(data.crisis_detected),
+    crisisMessage: data.crisis_message ?? null,
+  };
 }
 
 export async function sendVoiceChat({ audioBlob, sessionId }) {
